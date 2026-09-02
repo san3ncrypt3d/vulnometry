@@ -1,0 +1,54 @@
+# .github/workflows/exposure.yml
+#
+# Fails the build only on findings that are genuinely exposed in production,
+# not on every high CVSS score in a dev-only dependency.
+name: exposure
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 7 * * 1"   # Monday, so weekend KEV additions land before standup
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - run: pip install git+https://github.com/san3ncrypt3d/vulnometry.git
+
+      - name: Measure dependency exposure
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VULNOMETRY_INVENTORY: ./vulnometry.yaml
+        run: |
+          vulnometry sweep requirements.txt \
+            --workbook exposure.xlsx \
+            --dashboard exposure.html \
+            --format markdown -o exposure.md
+        continue-on-error: true
+
+      - name: Block on anything that must be contained
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VULNOMETRY_INVENTORY: ./vulnometry.yaml
+        run: |
+          vulnometry sweep requirements.txt --min-index 700 --format csv -o gate.csv
+          if [ "$(wc -l < gate.csv)" -gt 1 ]; then
+            echo "Findings at Contain level:"
+            cat gate.csv
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exposure-report
+          path: |
+            exposure.xlsx
+            exposure.html
+            exposure.md

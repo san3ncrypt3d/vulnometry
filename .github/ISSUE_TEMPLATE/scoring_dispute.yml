@@ -1,0 +1,32 @@
+name: Scoring dispute
+description: A verdict looks wrong to you
+labels: [scoring]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These are the most useful issues this project gets. The exposure model is
+        a set of defensible defaults, not empirical constants, and it should be
+        argued with. Please include the reasoning Vulnometry printed. Every factor
+        carries its basis, so we can usually see exactly where we disagree.
+
+  - type: input
+    id: cve
+    attributes:
+      label: CVE
+    validations: { required: true }
+
+  - type: textarea
+    id: output
+    attributes:
+      label: What Vulnometry said
+      description: The full output of `vulnometry measure <CVE> --asset <name>`, including the "How this was measured" block.
+      render: shell
+    validations: { required: true }
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you think it should say, and why
+      description: Which of the three factors is wrong: threat, reachability, or consequence?
+    validations: { required: true }

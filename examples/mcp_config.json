@@ -1,0 +1,14 @@
+{
+  "_comment": "Claude Desktop: claude_desktop_config.json. Cursor: .cursor/mcp.json. Zed, Cline, Continue and Goose use the same shape.",
+  "mcpServers": {
+    "vulnometry": {
+      "command": "vulnometry",
+      "args": ["serve", "mcp"],
+      "env": {
+        "VULNOMETRY_INVENTORY": "/absolute/path/to/vulnometry.yaml",
+        "NVD_API_KEY": "optional, but 10x faster",
+        "GITHUB_TOKEN": "optional, needed for advisories and exploit search"
+      }
+    }
+  }
+}

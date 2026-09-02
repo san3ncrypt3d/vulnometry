@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest a capability or argue with a scoring decision
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you hitting
+      description: Describe the situation, not the solution. It usually leads somewhere better.
+    validations: { required: true }
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Exposure model / scoring weights
+        - Inventory and business context
+        - Intake (spreadsheets, scanner formats)
+        - Reporting (workbook, dashboard)
+        - Feeds (a new data source)
+        - AI providers / MCP
+        - CLI ergonomics
+        - Something else
+    validations: { required: true }
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do

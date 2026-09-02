@@ -1,0 +1,63 @@
+# A worked example inventory. Copy it, then replace with your own estate.
+#
+# Only 'name' is required. Everything else sharpens the measurement.
+# Omit a field rather than guessing: Vulnometry treats unknown as uncertainty,
+# which is safer than a confident wrong answer.
+
+organisation: Northwind Retail
+default_owner: security@northwind.example
+
+assets:
+  - name: checkout-api
+    tier: 1                          # 1 mission-critical, 2 business-important, 3 supporting
+    owner: payments@northwind.example
+    business_unit: Commerce
+    environment: production
+    internet_exposed: true
+    data_classification: restricted  # public | internal | confidential | restricted
+    regimes: [pci-dss, gdpr]
+    components:
+      - "org.apache.logging.log4j*"
+      - "spring-*"
+      - "openssl*"
+    hosts:
+      - "checkout-*.prod.northwind.example"
+
+  - name: customer-portal
+    tier: 1
+    owner: web@northwind.example
+    business_unit: Commerce
+    environment: production
+    internet_exposed: true
+    data_classification: confidential
+    regimes: [gdpr]
+    compensating_controls:
+      - "Cloudflare WAF with virtual patching"
+    hosts: ["www.northwind.example", "portal-*.prod.*"]
+
+  - name: warehouse-wms
+    tier: 2
+    owner: logistics-it@northwind.example
+    business_unit: Operations
+    environment: production
+    internet_exposed: false
+    data_classification: internal
+    hosts: ["wms-*.dc1.internal"]
+
+  - name: internal-wiki
+    tier: 3
+    owner: it-ops@northwind.example
+    business_unit: Corporate
+    environment: production
+    internet_exposed: false
+    data_classification: internal
+    compensating_controls: ["VPN-only access"]
+
+  - name: ml-sandbox
+    tier: 3
+    owner: data-science@northwind.example
+    business_unit: Data
+    environment: development
+    internet_exposed: false
+    deployed: false                  # decommissioned; exposure collapses to zero
+    data_classification: public

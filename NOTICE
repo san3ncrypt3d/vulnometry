@@ -1,0 +1,14 @@
+Vulnometry
+Copyright 2026 Sanjay Babu
+
+This product includes software developed by Sanjay Babu.
+
+Vulnometry queries the following public data sources at runtime. It redistributes
+none of their data; each is subject to its own terms:
+
+  - NIST National Vulnerability Database   https://nvd.nist.gov
+  - CVE Program                            https://www.cve.org
+  - FIRST Exploit Prediction Scoring System https://www.first.org/epss
+  - CISA Known Exploited Vulnerabilities   https://www.cisa.gov/kev
+  - OSV.dev                                https://osv.dev
+  - GitHub Security Advisories             https://github.com/advisories

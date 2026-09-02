@@ -1,0 +1,43 @@
+name: Bug report
+description: Something behaved differently from what the docs say
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please run `vulnometry doctor`. Most reports turn out to be a
+        proxy blocking a feed or a missing API key, and the output tells us which.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, and what you expected instead.
+      placeholder: |
+        I ran: vulnometry import scan.xlsx
+        I expected: findings for the 40 CVEs in the sheet
+        I got: "No CVE identifiers found"
+    validations: { required: true }
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: vulnometry doctor output
+      render: shell
+    validations: { required: true }
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `vulnometry --version`, and your OS and Python version.
+    validations: { required: true }
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: |
+        For import problems, `vulnometry import FILE --preview` output helps enormously.
+        Please redact hostnames and CVE lists if they are sensitive. The column
+        names alone are usually enough to diagnose it.
