@@ -48,28 +48,28 @@ Same CVE, three jobs, three dates, three owners.
 
 ## Install
 
-Requires Python 3.10 or newer. Not on PyPI yet, so install from source:
+Requires Python 3.10 or newer.
+
+```bash
+pip install vulnometry
+```
+
+The optional extras are only needed for specific backends:
+
+```bash
+pip install 'vulnometry[bedrock]'    # + AWS Bedrock
+pip install 'vulnometry[service]'    # + the REST server
+pip install 'vulnometry[all]'        # both
+```
+
+To work on the code instead, clone it and use the install script, which sets up a virtualenv and
+runs the tests:
 
 ```bash
 git clone https://github.com/san3ncrypt3d/vulnometry.git
 cd vulnometry
-./install.sh            # Windows: .\install.ps1
-```
-
-That creates a virtualenv, installs the package and runs the test suite. Activate it whenever
-you want to use the tool:
-
-```bash
+./install.sh                    # Windows: .\install.ps1
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
-```
-
-If you would rather do it by hand, or want the optional extras:
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"         # base install plus the test suite
-pip install -e ".[bedrock]"     # + AWS Bedrock support
-pip install -e ".[service]"     # + the REST server
 ```
 
 No API keys are required for anything. Two free ones make it considerably faster, and
@@ -84,14 +84,20 @@ export GITHUB_TOKEN=...   # any GitHub token, no scopes needed, for advisory loo
 
 ```bash
 vulnometry doctor                    # check the feeds are reachable
-cp examples/vulnometry.yaml .        # a worked example estate to play with
+vulnometry inventory init            # describe what you run, in one YAML file
 vulnometry compare CVE-2021-44228    # one CVE, one answer per asset
 ```
 
-Then try it on something of yours:
+To try it against a worked example estate before describing your own:
 
 ```bash
-vulnometry inventory init            # describe what you run
+curl -O https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/examples/vulnometry.yaml
+vulnometry compare CVE-2021-44228
+```
+
+Then point it at a real scanner export:
+
+```bash
 vulnometry import ~/Downloads/scan.xlsx
 ```
 
@@ -256,7 +262,7 @@ Also served at `/dashboard` when running `vulnometry serve http`.
 - `forensic` adds a search for public exploit code.
 
 Both also take `--fail-on contain|remediate|schedule`, which exits non-zero when anything
-reaches that verdict. That is the hook for CI; see `examples/ci-workflow.yml`.
+reaches that verdict. That is the hook for CI; see [`examples/ci-workflow.yml`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples/ci-workflow.yml).
 
 Run `vulnometry <command> --help` for the full set of options.
 
@@ -300,8 +306,9 @@ result = await assess_finding("CVE-2021-44228",
 print(result.exposure.verdict, result.exposure.index, result.due_by)
 ```
 
-See `examples/` for working scripts, including `bring_your_own_agent.py` if you already have an
-agent loop and just want the schemas.
+See [`examples/`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples) for working scripts, including
+[`bring_your_own_agent.py`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples/bring_your_own_agent.py) if you already have an agent
+loop and just want the schemas.
 
 ## Resilience
 

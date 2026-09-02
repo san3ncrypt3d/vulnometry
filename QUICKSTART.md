@@ -11,31 +11,38 @@ queries public vulnerability feeds.
 You need Python 3.10 or newer. Check with `python3 --version`.
 
 ```bash
+pip install vulnometry
+```
+
+If you would rather work on the code, clone it instead. The install script creates a virtualenv
+in `.venv`, installs the package and runs the tests:
+
+```bash
 git clone https://github.com/san3ncrypt3d/vulnometry.git
 cd vulnometry
 ./install.sh                   # Windows: .\install.ps1
-```
-
-The script creates a virtualenv in `.venv`, installs the package, and runs the tests. If you
-prefer to do it by hand:
-
-```bash
-python3 -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
 ```
 
-> The `vulnometry` command only exists while the virtualenv is active. If you open a new
-> terminal, run `source .venv/bin/activate` again, or you will get "command not found".
+> If you installed into a virtualenv, the `vulnometry` command only exists while that
+> environment is active. Open a new terminal and you will need to activate it again, or you
+> will get "command not found".
 
 ## 2. Confirm it works
+
+```bash
+vulnometry --version
+```
+
+That needs no network and no configuration. If you cloned the repository, you can also run the
+test suite:
 
 ```bash
 pytest -q
 ```
 
-Expect `58 passed` in well under a second. These tests use synthetic data and never touch the
-network, so they also work on a plane.
+Expect `58 passed` in well under a second. Those tests use synthetic data and never touch the
+network, so they work on a plane.
 
 ## 3. Confirm it can reach the feeds
 
@@ -67,12 +74,14 @@ CVEs will crawl. Neither key is required to continue.
 
 ## 4. See what it does, using the example estate
 
-Before describing your own systems, try the worked example that ships with the repo:
+Before describing your own systems, try the worked example estate:
 
 ```bash
-cp examples/vulnometry.yaml .
+curl -O https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/examples/vulnometry.yaml
 vulnometry compare CVE-2021-44228
 ```
+
+If you cloned the repository, it is already there as `examples/vulnometry.yaml`.
 
 `compare` takes one CVE and scores it against every asset in the inventory:
 
@@ -210,7 +219,7 @@ It is available on `measure` and `import`.
 
 For dependency scanning, `sweep` has no `--fail-on`; filter with `--min-index` and check whether
 anything came back. There is a ready-made workflow doing exactly that in
-`examples/ci-workflow.yml`.
+[`examples/ci-workflow.yml`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples/ci-workflow.yml).
 
 ## 9. Wire it into an AI client (optional)
 
@@ -226,7 +235,7 @@ Start the client from the directory holding your `vulnometry.yaml` so the invent
 Run `/mcp` to confirm it shows as connected, then ask something like
 *"What do we run, and is CVE-2021-44228 urgent for any of it?"*
 
-For other clients, `examples/mcp_config.json` has the equivalent JSON.
+For other clients, [`examples/mcp_config.json`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples/mcp_config.json) has the equivalent JSON.
 
 **Talking to a model directly:**
 
@@ -250,7 +259,7 @@ A model never computes a score. It reads the same numbers you see and explains t
 | Findings all say "unattributed" | No inventory loaded. Run `vulnometry inventory init` and describe a few assets. |
 | Import finds no CVEs | Run `vulnometry import FILE --preview` to see which columns were detected. |
 | Scores look too high | Expected for assets you have not described. Unknown context is treated as uncertainty. |
-| `ModuleNotFoundError: yaml` | The install did not finish. Re-run `pip install -e ".[dev]"`. |
+| `ModuleNotFoundError: yaml` | The install did not finish. Re-run `pip install vulnometry`, or `pip install -e ".[dev]"` from a clone. |
 
 ## Where next
 
