@@ -6,6 +6,16 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard screenshot in the README, with the sample export
+  (`examples/scan-export.csv`) and generated page (`examples/exposure.html`) that produced it.
+
+### Changed
+
+- Dashboard cards centre their chart vertically, so a short chart no longer leaves
+  a band of empty space when the card next to it is taller.
+
 ## [0.1.0] - 2026-09-02
 
 First release. Exposure model `bei-1.0`.

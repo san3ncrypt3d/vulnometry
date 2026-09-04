@@ -31,6 +31,9 @@ and consequence. That difference is what knowing your own estate buys you.
 
 Same CVE, three jobs, three dates, three owners.
 
+Bulk runs write the same measurement out as an annotated workbook and a self-contained
+[HTML dashboard](#dashboard) for the people who do not live in a terminal.
+
 ## Contents
 
 - [Install](#install)
@@ -229,13 +232,27 @@ and Method (how the numbers were produced).
 vulnometry import export.xlsx --dashboard exposure.html
 ```
 
+[![The vulnometry exposure dashboard: a KPI strip, a verdict donut, exposure by business unit, actionable load by owner, and a reachability-versus-consequence scatter](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard.png)](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard-full.png)
+
+*Click through for the full page, including the ranked findings table. The file itself is
+[`examples/exposure.html`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples/exposure.html) — download it and open it in a browser
+for the hover detail on every bubble.*
+
 One self-contained HTML file. No server, no CDN, no build step and no JavaScript framework;
 charts are inline SVG generated in Python. It opens from `file://` and works air-gapped, which
 matters when the person who needs the summary is not the person with a terminal.
 
 It shows a KPI strip, a verdict donut, exposure by business unit, actionable load by owner, and
 a reachability-versus-consequence scatter with bubble size set by threat. Findings in the
-top-right corner are the ones to work on.
+top-right corner are the ones to work on; the cluster on the left edge is what a severity-only
+view would have ranked identically.
+
+That example is real output, not a mock-up. Reproduce it in one command:
+
+```bash
+vulnometry import examples/scan-export.csv --inventory examples/vulnometry.yaml \
+  --lens full --dashboard exposure.html --title "Northwind Retail — exposure"
+```
 
 Also served at `/dashboard` when running `vulnometry serve http`.
 

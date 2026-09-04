@@ -117,7 +117,7 @@ header h1 { margin:0 0 4px; font-size:21px; letter-spacing:.2px; }
 header p { margin:0; opacity:.72; font-size:13px; }
 main { padding:24px 32px 56px; max-width:1240px; margin:0 auto; }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin-bottom:22px; }
-.card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px 20px; }
+.card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; }
 .card h2 { margin:0 0 14px; font-size:12px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:700; }
 .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:14px; margin-bottom:22px; }
 .kpi { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
@@ -134,7 +134,8 @@ tr:last-child td { border-bottom:none; }
 .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:12px; }
 .legend span { display:flex; align-items:center; gap:6px; }
 .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
-.chartrow { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+.card > svg { margin-block:auto; }
+.chartrow { display:flex; gap:20px; align-items:center; justify-content:center; flex-wrap:wrap; margin-block:auto; }
 footer { color:var(--muted); font-size:12px; padding:0 32px 40px; max-width:1240px; margin:0 auto; }
 code { background:#eef2f5; padding:1px 5px; border-radius:4px; font-size:12px; }
 """
