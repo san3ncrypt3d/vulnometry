@@ -1,53 +1,100 @@
-# Map an existing asset export (CSV or XLSX) onto a vulnometry inventory.
+# Map an existing asset export onto a vulnometry inventory.
 #
-#   vulnometry inventory import assets.csv --map inventory-mapping.yaml -o vulnometry.yaml
+# This file is the mapping for the worked example in docs/INVENTORY-IMPORT.md.
+# Run it end to end:
 #
-# or skip the file on disk and use the export directly:
+#   vulnometry inventory import examples/asset-export.csv --map examples/inventory-mapping.yaml \
+#     -o /tmp/vulnometry.yaml --overwrite
 #
-#   vulnometry import scan.xlsx --inventory assets.csv --inventory-map inventory-mapping.yaml
+# The committed result is examples/inventory-from-export.yaml.
 #
-# The column names and value tables below are examples. Replace them with the
-# headers and codes your own export actually uses. Nothing here is tool-specific.
+# To adapt it to your own export: keep the structure, change the header names on
+# the right of each 'columns:' line, and change the value tables to match the
+# codes your export uses. Nothing here is specific to any tool or vendor.
 
-# 'columns' points each asset field at one header, or a list of headers to try in order.
+# ---------------------------------------------------------------------------
+# columns: which header feeds which asset field.
+# The value is one header, or a list of headers tried in order (first match wins),
+# so one mapping can absorb sheets that name the same thing differently.
+# Header matching ignores case, spaces and punctuation: "Team Contact",
+# "team_contact" and "TEAMCONTACT" are the same header. It is NOT fuzzy:
+# "Team Contact" does not match "Contact".
+# ---------------------------------------------------------------------------
 columns:
-  name: [Application, App Name, Service]          # required
-  tier: Criticality
-  owner: Owner
-  business_unit: Business Unit
-  environment: Environment
-  data_classification: Information Classification
-  regimes: Compliance
-  aliases: [Scanner Project, Also Known As]       # other names a scan might use for this asset
-  hosts: URL                                      # hostnames pulled out of here
-  internet_exposed: [Internet Facing, Customer Facing]
+  name:                [Service, Application, App Name]   # required; the asset's identity
+  owner:               [Owner, Team Contact]              # free text; shown on the action plan
+  tier:                [Criticality, Tier]                # 1 mission-critical .. 3 supporting
+  data_classification: [Data Sensitivity, Classification]
+  regimes:             Regulations
+  hosts:               Environment URLs                   # hostnames are pulled out of the text
+  aliases:             [Snyk Targets, Repo]               # other names a scanner might use
+  internet_exposed:    [Internet, Public, Customer Facing]
+  deployed:            Status
 
-# 'values' translates raw cell text (matched case-insensitively) to what vulnometry expects.
-# 1/2/3, high/medium/low and critical/high/moderate/low are understood without listing them.
+# ---------------------------------------------------------------------------
+# values: translate this export's raw cell text to what vulnometry expects.
+# Keys are matched case-insensitively after trimming.
+#
+#   tier                -> 1, 2 or 3. The words 1/2/3, high/medium/low and
+#                          critical/high/moderate/low are understood even if you
+#                          do not list them. Anything else is left unset + warned.
+#   data_classification -> public | internal | confidential | restricted
+#   regimes             -> applied per token after splitting; tokens you do not
+#                          list pass through lowercased (so "GDPR" -> "gdpr").
+#                          pci-dss, hipaa, sox and gdpr drive the score; others
+#                          are recorded but do not change it.
+#   deployed            -> "true" / "false" strings; only listed values count,
+#                          everything else means "unknown" (see transforms below).
+# ---------------------------------------------------------------------------
 values:
   tier:
-    gold: 1
-    silver: 2
-    bronze: 3
+    "tier 1": 1
+    "tier 2": 2
+    "tier 3": 3
   data_classification:
-    secret: restricted
-    "confidential - internal": confidential
-    "internal use only": internal
-    unclassified: public
-  regimes:            # applied to each token after splitting; unlisted tokens pass through lowercased
-    pci: pci-dss
-    "sarbanes-oxley": sox
+    restricted: restricted
+    confidential: confidential
+    internal: internal
+    public: public
+  regimes:
+    "pci-dss": pci-dss
+    gdpr: gdpr
+    sox: sox
+  deployed:
+    production: "true"
+    active: "true"
+    decommissioned: "false"
+    retired: "false"
 
-# 'transforms' shape a raw cell before translation.
-#   list fields: split_lines | split_delimited | split_comma | extract_hosts
-#   tri-state fields (internet_exposed, deployed): any_affirmative | all_affirmative | first
+# ---------------------------------------------------------------------------
+# transforms: shape a raw cell before translation.
+#
+#   list fields (regimes, aliases, hosts, components, compensating_controls):
+#     split_lines      - one item per line
+#     split_delimited  - split on ; , / | and newlines
+#     split_comma      - split on commas only
+#     extract_hosts    - pull https?:// hostnames (or bare FQDNs) out of the text
+#
+#   tri-state fields (internet_exposed, deployed):
+#     any_affirmative  - true if ANY source column is yes/true/1/... ;
+#                        false only if every non-blank value is negative;
+#                        a non-blank value that is neither is treated as yes
+#     all_affirmative  - true only if every non-blank value is affirmative
+#     first            - use the first non-blank column only
+#     mapped           - only values translated by 'values:' count; anything
+#                        else (including blanks) means "unknown"
+# ---------------------------------------------------------------------------
 transforms:
-  aliases: split_lines
-  regimes: split_delimited
-  hosts: extract_hosts
+  regimes:          split_delimited
+  aliases:          split_lines
+  hosts:            extract_hosts
   internet_exposed: any_affirmative
+  deployed:         mapped
 
-# Optional: override which cell values count as yes / no for tri-state fields.
+# ---------------------------------------------------------------------------
+# booleans (optional): override which words count as yes / no for the
+# tri-state fields. Defaults already cover yes/no, y/n, true/false, 1/0.
+# ---------------------------------------------------------------------------
 # booleans:
-#   true: [yes, "y", "true", external]
-#   false: [no, "n", "false", internal, ""]
+#   true:  [yes, "y", "true", "1", external, public]
+#   false: [no, "n", "false", "0", internal, "n/a", ""]
