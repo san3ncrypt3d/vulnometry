@@ -260,6 +260,11 @@ The workbook it writes has four sheets: Findings (every row, colour-coded, filte
 header), Action Plan (only what needs doing, sorted by due date), By Owner (workload per team),
 and Method (how the numbers were produced).
 
+When a finding matches no asset in your inventory it is still scored (pessimistically) and
+still actionable: every report keeps the name the scanner gave it — a Scanner ref column in the
+workbook, and a `~name` fallback everywhere else — so you always know which project or host to
+go and look at.
+
 ## Dashboard
 
 ```bash

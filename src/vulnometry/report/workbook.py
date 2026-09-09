@@ -31,7 +31,7 @@ THIN = Side(style="thin", color="D5D8DC")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 FINDINGS_COLUMNS = [
-    ("CVE", 16), ("BEI", 8), ("Verdict", 12), ("Asset", 22), ("Owner", 26),
+    ("CVE", 16), ("BEI", 8), ("Verdict", 12), ("Asset", 22), ("Scanner ref", 24), ("Owner", 26),
     ("Business unit", 18), ("Environment", 13), ("Due by", 12), ("SLA days", 9),
     ("Threat", 9), ("Reach", 9), ("Consequence", 12),
     ("CVSS", 7), ("EPSS %", 9), ("KEV", 6), ("Ransomware", 11),
@@ -84,6 +84,7 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
             item.exposure.index,
             item.exposure.verdict,
             item.asset or "",
+            item.scanner_ref(),
             item.owner or "",
             item.business_unit or "",
             item.environment or "",
@@ -105,7 +106,7 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=column >= 20)
+            cell.alignment = Alignment(vertical="top", wrap_text=column >= 21)
 
         verdict_cell = sheet.cell(row=row, column=3)
         verdict_cell.fill = VERDICT_FILL.get(item.exposure.verdict, VERDICT_FILL["Accept"])
@@ -138,7 +139,7 @@ def _action_sheet(workbook: Workbook, items: list[Assessment]) -> None:
         row = header_row + 1 + offset
         for column, value in enumerate(
             [item.due_by or "unscheduled", item.cve_id, item.exposure.verdict,
-             item.asset or "unattributed", item.owner or "unassigned", item.directive],
+             item.where() or "unattributed", item.owner or "unassigned", item.directive],
             start=1,
         ):
             cell = sheet.cell(row=row, column=column, value=value)

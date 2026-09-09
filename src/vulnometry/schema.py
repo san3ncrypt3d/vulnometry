@@ -198,15 +198,29 @@ class Assessment(Serialisable):
     due_by: str = ""
     sla_days: int | None = None
 
+    # what the scanner or spreadsheet called this finding's location, kept verbatim
+    # whether or not it matched an asset in the inventory
+    source_asset: str = ""
+    source_host: str = ""
+    source_component: str = ""
+
     directive: str = ""
     gaps: list[str] = field(default_factory=list)
     lens: str = "full"
     measured_at: str = ""
 
+    def scanner_ref(self) -> str:
+        """The identifier the scan used for this finding: project, host, or component."""
+        return self.source_asset or self.source_host or self.source_component
+
+    def where(self) -> str:
+        """Best label for where this finding lives: the matched asset, else the scan's own name."""
+        return self.asset or self.scanner_ref()
+
     def one_line(self) -> str:
         bits = [self.cve_id, f"BEI {self.exposure.index:.0f}", self.exposure.verdict]
-        if self.asset:
-            bits.append(f"on {self.asset}")
+        if self.where():
+            bits.append(f"on {self.where()}")
         if self.exploitation.confirmed:
             bits.append("KEV")
         return " · ".join(bits)
