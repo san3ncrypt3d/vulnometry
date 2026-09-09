@@ -13,7 +13,9 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
   mapping file names the columns and the value translations; built-in transforms cover
   multi-value cells, host extraction from URLs and tri-state booleans. Re-running merges,
   keeping fields added by hand. Also usable inline: `--inventory EXPORT --inventory-map MAPPING`.
-  Template in `examples/inventory-mapping.yaml`.
+- `docs/INVENTORY-IMPORT.md`: full reference and a runnable worked example
+  (`examples/asset-export.csv`, `examples/inventory-mapping.yaml`,
+  `examples/inventory-from-export.yaml`) with a line-by-line account of how each column is read.
 - `aliases` on an asset: other names a scan might use for it (a scanner project, a code
   name, a ticket key). `Inventory.by_name()` resolves them, with glob support.
 - CSV intake now decodes cp1252 / latin-1 exports, not just UTF-8.

@@ -204,18 +204,36 @@ is named `vulnometry.yaml` and sits in the working directory, or you can pass `-
 ### Importing from an asset export you already keep
 
 If the business context already lives in a CMDB extract, an application register or a spreadsheet
-a security team maintains, a mapping file says which column feeds which field and how to translate
-the codes. Nothing in it is tool-specific; the column names and value tables are all yours.
+a security team maintains, point vulnometry at the export plus a mapping file that says which
+column is which. Nothing in the mapping is tool-specific; the header names and value codes are
+all yours.
 
 ```bash
 vulnometry inventory import assets.csv --map mapping.yaml -o vulnometry.yaml   # freeze to YAML
 vulnometry import scan.xlsx --inventory assets.csv --inventory-map mapping.yaml  # or use it directly
 ```
 
-Re-running `import` merges: columns named in the mapping are refreshed from the export, every
-other field you added by hand is kept. `matches` on a scanner project name, code name or ticket
-key go in a new `aliases` list, so findings attach even when the scanner does not use the asset's
-own name. See [`examples/inventory-mapping.yaml`](examples/inventory-mapping.yaml).
+A three-line mapping already does something useful:
+
+```yaml
+columns:
+  name:  Service               # your header -> vulnometry's field
+  tier:  Tier
+  owner: Team Contact
+values:
+  tier: {"tier 1": 1, "tier 2": 2, "tier 3": 3}   # translate your codes
+```
+
+Fuller mappings pull hostnames out of a URL column, split a multi-value cell, derive
+`internet_exposed` from a couple of yes/no columns, and route a scanner's own project names into
+a new `aliases` list so findings attach even when the scan never uses the asset's own name.
+
+Re-running merges: mapped columns are refreshed from the export, anything you added by hand is
+kept. A complete worked example — the CSV, the mapping, the resulting inventory, and a
+line-by-line account of how each column is read — is in
+[docs/INVENTORY-IMPORT.md](docs/INVENTORY-IMPORT.md), runnable from
+[`examples/asset-export.csv`](examples/asset-export.csv) and
+[`examples/inventory-mapping.yaml`](examples/inventory-mapping.yaml).
 
 ## Bulk analysis
 

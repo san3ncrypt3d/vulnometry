@@ -226,3 +226,37 @@ def _dump(tmp_path, text):
     path = tmp_path / "vulnometry.yaml"
     path.write_text(text)
     return path
+
+
+def test_shipped_example_parses_as_documented():
+    """examples/asset-export.csv + examples/inventory-mapping.yaml stay in sync with the docs."""
+    from pathlib import Path
+
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    inv = build_inventory(examples / "asset-export.csv", examples / "inventory-mapping.yaml")
+
+    assert [a.name for a in inv.assets] == [
+        "storefront-web", "checkout-api", "warehouse-sync", "analytics-dashboard",
+        "partner-portal", "internal-wiki", "legacy-invoicing", "ml-sandbox",
+    ]
+
+    store = inv.by_name("storefront-web")
+    assert store.tier == 1
+    assert store.data_classification == "confidential"
+    assert store.regimes == ["pci-dss", "gdpr"]
+    assert store.hosts == ["shop.northwind.example", "shop.eu.northwind.example"]
+    assert store.internet_exposed is True
+
+    # a scanner finding keyed by the Snyk project name resolves to the asset
+    assert inv.by_name("northwind/checkout-api:pom.xml").name == "checkout-api"
+
+    # "Partner" is not blank and not a "no" -> any_affirmative reads it as yes
+    assert inv.by_name("partner-portal").internet_exposed is True
+
+    # blank Tier -> unset; Status "Decommissioned" -> deployed False
+    legacy = inv.by_name("legacy-invoicing")
+    assert legacy.tier is None
+    assert legacy.deployed is False
+
+    # Status "Planned" is not in the deployed value table -> unknown, not False
+    assert inv.by_name("ml-sandbox").deployed is None

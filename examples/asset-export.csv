@@ -1,0 +1,10 @@
+Service,Team Contact,Tier,Data Sensitivity,Regulations,Environment URLs,Snyk Targets,Repo,Internet,Handles Card Data,Status
+storefront-web,web-guild@northwind.example,Tier 1,Confidential,PCI-DSS; GDPR,https://shop.northwind.example https://shop.eu.northwind.example,northwind/storefront-web:package.json,github.com/northwind/storefront-web,yes,yes,Production
+checkout-api,payments@northwind.example,Tier 1,Restricted,PCI-DSS,https://api.northwind.example/checkout,"northwind/checkout-api:pom.xml
+northwind/checkout-api-e2e:package.json",github.com/northwind/checkout-api,yes,yes,Production
+warehouse-sync,ops@northwind.example,Tier 2,Internal,,,northwind/warehouse-sync:go.mod,github.com/northwind/warehouse-sync,no,no,Production
+analytics-dashboard,data@northwind.example,Tier 3,Internal,GDPR,https://analytics.northwind.example,,github.com/northwind/analytics-dashboard,no,no,Production
+partner-portal,partnerships@northwind.example,Tier 2,Confidential,GDPR,https://partners.northwind.example,northwind/partner-portal:yarn.lock,github.com/northwind/partner-portal,Partner,no,Production
+internal-wiki,it@northwind.example,Tier 3,Internal,None,https://wiki.corp.northwind.example,,github.com/northwind/internal-wiki,no,no,Production
+legacy-invoicing,,,Confidential,SOX,http://invoicing.corp.northwind.example,,github.com/northwind/legacy-invoicing,no,no,Decommissioned
+ml-sandbox,ml@northwind.example,Tier 3,Public,None,,,github.com/northwind/ml-sandbox,no,no,Planned
