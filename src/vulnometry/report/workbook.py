@@ -32,12 +32,14 @@ BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 FINDINGS_COLUMNS = [
     ("CVE", 16), ("BEI", 8), ("Verdict", 12), ("Asset", 22), ("Scanner ref", 24), ("Owner", 26),
-    ("Business unit", 18), ("Environment", 13), ("Due by", 12), ("SLA days", 9),
+    ("Business unit", 18), ("Environment", 13), ("Internet", 12), ("Due by", 12), ("SLA days", 9),
     ("Threat", 9), ("Reach", 9), ("Consequence", 12),
-    ("CVSS", 7), ("EPSS %", 9), ("KEV", 6), ("Ransomware", 11),
+    ("CVSS", 7), ("EPSS %", 9), ("EPSS date", 12), ("KEV", 6), ("Ransomware", 11),
     ("Component", 22), ("Fixed in", 28), ("Confidence", 11),
-    ("Primary driver", 52), ("Directive", 60),
+    ("Rationale", 90), ("Directive", 60),
 ]
+
+_FACING_SHORT = {"internet-facing": "External", "internal-only": "Internal", "exposure unknown": "Unknown"}
 
 
 def _style_header(sheet, row_index: int, count: int) -> None:
@@ -61,6 +63,80 @@ def _primary_driver(item: Assessment) -> str:
         if basis:
             return basis[0]
     return ""
+
+
+ACCEPT_COLUMNS = [
+    ("CVE", 16), ("Location", 30), ("Match", 15), ("Package", 26),
+    ("BEI", 7), ("Threat", 8), ("Reach", 8), ("Conseq.", 9),
+    ("Internet", 11), ("Tier", 6), ("Data class", 14),
+    ("EPSS %", 9), ("EPSS date", 12), ("CISA KEV", 9), ("CVSS", 7),
+    ("Fix available", 22), ("Confidence", 11),
+    ("Rationale", 95), ("Evidence gaps", 40),
+    ("Model", 10), ("Assessed (UTC)", 22),
+    ("Decision", 26), ("Decided by", 16), ("Decision date", 14),
+    ("Review by", 14), ("Reopen triggers", 60), ("Snyk ignore ID", 18), ("Ticket", 16),
+]
+
+REOPEN_DEFAULT = ("EPSS >= 0.10  |  added to CISA KEV  |  a working public exploit appears  |  "
+                  "the asset's internet exposure or tier changes  |  review-by date reached")
+
+
+def _accepted_sheet(workbook: Workbook, items: list[Assessment]) -> None:
+    accepted = [i for i in items if i.exposure.verdict == "Accept"]
+    sheet = workbook.create_sheet("Accepted")
+
+    sheet.cell(row=1, column=1, value="Accepted risk — rationale and sign-off").font = TITLE_FONT
+    sheet.cell(
+        row=2, column=1,
+        value=(f"{len(accepted)} finding(s) scored below the action threshold. The rationale columns are "
+               "produced by the model; fill the Decision..Ticket columns and keep this as the audit record."),
+    ).font = Font(color="7F8C8D", size=10)
+
+    header_row = 4
+    for index, (name, _) in enumerate(ACCEPT_COLUMNS, start=1):
+        sheet.cell(row=header_row, column=index, value=name)
+    _style_header(sheet, header_row, len(ACCEPT_COLUMNS))
+
+    for offset, item in enumerate(sorted(accepted, key=lambda i: -i.exposure.index)):
+        row = header_row + 1 + offset
+        severity = item.weakness.primary_severity()
+        values = [
+            item.cve_id,
+            item.where() or "",
+            "inventory" if item.asset else "scanner-ref only",
+            item.source_component or "",
+            item.exposure.index,
+            item.exposure.threat,
+            item.exposure.reachability,
+            item.exposure.consequence,
+            _FACING_SHORT.get(item.exposure_facing(), ""),
+            item.tier or "",
+            item.data_classification or "",
+            round(item.probability.probability * 100, 2) if item.probability.probability is not None else "no score",
+            item.probability.as_of or "",
+            "Yes" if item.exploitation.confirmed else "No",
+            severity.base_score if severity and severity.base_score is not None else "",
+            ", ".join(item.fixes[:3]) or "none published",
+            item.exposure.confidence,
+            item.rationale(),
+            " | ".join(item.gaps) or "none",
+            item.exposure.model_version,
+            item.measured_at or "",
+            "Accept risk / suppress in scanner",
+            "", "", "",
+            REOPEN_DEFAULT,
+            "", "",
+        ]
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=column, value=value)
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=column in (18, 19, 26))
+        sheet.cell(row=row, column=1).font = Font(bold=True)
+
+    _widths(sheet, ACCEPT_COLUMNS)
+    sheet.freeze_panes = sheet.cell(row=header_row + 1, column=2)
+    if accepted:
+        sheet.auto_filter.ref = f"A{header_row}:{get_column_letter(len(ACCEPT_COLUMNS))}{header_row + len(accepted)}"
 
 
 def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
@@ -88,6 +164,7 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
             item.owner or "",
             item.business_unit or "",
             item.environment or "",
+            _FACING_SHORT.get(item.exposure_facing(), ""),
             item.due_by or "",
             item.sla_days or "",
             item.exposure.threat,
@@ -95,18 +172,19 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
             item.exposure.consequence,
             severity.base_score if severity and severity.base_score is not None else "",
             round(item.probability.probability * 100, 2) if item.probability.probability is not None else "",
+            item.probability.as_of or "",
             "Yes" if item.exploitation.confirmed else "",
             "Yes" if item.exploitation.ransomware_linked else "",
             (item.bulletins[0].remedies[0].component if item.bulletins and item.bulletins[0].remedies else ""),
             ", ".join(item.fixes[:3]),
             item.exposure.confidence,
-            _primary_driver(item),
+            item.rationale(),
             item.directive,
         ]
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=column >= 21)
+            cell.alignment = Alignment(vertical="top", wrap_text=column >= 23)
 
         verdict_cell = sheet.cell(row=row, column=3)
         verdict_cell.fill = VERDICT_FILL.get(item.exposure.verdict, VERDICT_FILL["Accept"])
@@ -221,9 +299,14 @@ def _method_sheet(workbook: Workbook, items: list[Assessment], summary: dict | N
         ("Caveat", "Asset context comes from your inventory. Nothing here can verify that the vulnerable code path "
                    "is actually reachable in your deployment."),
     ]
-    if summary:
+    if items:
         rows += [
             ("", ""),
+            ("Run", f"Assessed {items[0].measured_at or 'n/a'} · exposure model {items[0].exposure.model_version} · "
+                    f"lens '{items[0].lens}'. Re-running with the same inputs reproduces these numbers."),
+        ]
+    if summary:
+        rows += [
             ("This assessment", f"{summary['assessed']} findings · {summary['actionable']} actionable · "
                                 f"{summary['suppressed_by_context']} suppressed by business context · "
                                 f"{summary['unattributed']} not matched to a known asset"),
@@ -241,6 +324,7 @@ def build_workbook(items: list[Assessment], path: str | Path, summary: dict | No
     workbook = Workbook()
     _findings_sheet(workbook, items)
     _action_sheet(workbook, items)
+    _accepted_sheet(workbook, items)
     _owner_sheet(workbook, items)
     _method_sheet(workbook, items, summary)
     path.parent.mkdir(parents=True, exist_ok=True)

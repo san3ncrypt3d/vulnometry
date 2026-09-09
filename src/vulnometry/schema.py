@@ -195,6 +195,9 @@ class Assessment(Serialisable):
     owner: str = ""
     business_unit: str = ""
     environment: str = ""
+    tier: int | None = None
+    internet_exposed: bool | None = None
+    data_classification: str = ""
     due_by: str = ""
     sla_days: int | None = None
 
@@ -216,6 +219,58 @@ class Assessment(Serialisable):
     def where(self) -> str:
         """Best label for where this finding lives: the matched asset, else the scan's own name."""
         return self.asset or self.scanner_ref()
+
+    def exposure_facing(self) -> str:
+        """internet-facing / internal-only / exposure unknown."""
+        if self.internet_exposed is True:
+            return "internet-facing"
+        if self.internet_exposed is False:
+            return "internal-only"
+        return "exposure unknown"
+
+    def rationale(self) -> str:
+        """One-sentence audit rationale: what drove the verdict, plus the context it was judged in."""
+        e = self.exposure
+        if e.collapsed_by == "not-deployed":
+            return f"{e.verdict}: the affected component is not deployed on this asset, so nothing is exposed here."
+
+        factors = [
+            ("threat", e.threat, e.threat_basis),
+            ("reachability", e.reachability, e.reachability_basis),
+            ("consequence", e.consequence, e.consequence_basis),
+        ]
+        urgent = e.verdict in ("Contain", "Remediate")
+        name, _, basis = (max if urgent else min)(factors, key=lambda f: f[1])
+        lead = {
+            ("threat", True): "exploitation is likely or under way",
+            ("threat", False): "little sign anyone will try",
+            ("reachability", True): "readily reachable in this environment",
+            ("reachability", False): "hard to reach in this environment",
+            ("consequence", True): "high impact if exploited",
+            ("consequence", False): "limited impact if exploited",
+        }[(name, urgent)]
+
+        parts = [f"{e.verdict}: {lead} — {(basis or ['no detail recorded'])[0]}."]
+
+        ctx = [self.exposure_facing()]
+        if self.tier:
+            ctx.append(f"tier {self.tier}")
+        if self.data_classification:
+            ctx.append(f"{self.data_classification} data")
+        if self.probability.probability is not None:
+            epss = f"EPSS {self.probability.probability * 100:.2f}%"
+            if self.probability.as_of:
+                epss += f" (as of {self.probability.as_of})"
+            ctx.append(epss)
+        else:
+            ctx.append("no EPSS score")
+        ctx.append("in CISA KEV" if self.exploitation.confirmed else "not in CISA KEV")
+        parts.append("Context: " + ", ".join(ctx) + ".")
+
+        if not self.fixes and e.verdict in ("Accept", "Schedule"):
+            parts.append("No fixed version published.")
+        parts.append(f"Confidence: {e.confidence}.")
+        return " ".join(parts)
 
     def one_line(self) -> str:
         bits = [self.cve_id, f"BEI {self.exposure.index:.0f}", self.exposure.verdict]

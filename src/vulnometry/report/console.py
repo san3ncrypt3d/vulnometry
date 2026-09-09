@@ -188,6 +188,14 @@ def to_markdown(items: list[Assessment], summary: dict | None = None) -> str:
             f"| {', '.join(item.fixes[:2]) or '-'} |"
         )
 
+    accepted = [i for i in items if i.exposure.verdict == "Accept"]
+    if accepted:
+        lines += ["", "## Accepted (below the action threshold)", ""]
+        for item in accepted:
+            lines.append(f"- **{item.cve_id}** on {item.where() or 'an unmatched target'} "
+                         f"(BEI {item.exposure.index:g}) — {item.rationale()}")
+        lines.append("")
+
     for item in items:
         if item.exposure.verdict == "Accept":
             continue

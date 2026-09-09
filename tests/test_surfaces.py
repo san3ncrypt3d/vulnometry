@@ -8,7 +8,13 @@ from vulnometry.providers import parse_spec
 from vulnometry.providers.base import ChatResponse, Message, ProviderError, ToolCall, parse_arguments
 from vulnometry.registry import ACTIONS, invoke
 from vulnometry.report import build_dashboard, build_workbook, to_csv, to_json, to_markdown
-from vulnometry.schema import Assessment, ExposureMeasure, Weakness
+from vulnometry.schema import (
+    Assessment,
+    ConfirmedExploitation,
+    ExploitProbability,
+    ExposureMeasure,
+    Weakness,
+)
 from vulnometry.surfaces.schemas import DIALECTS
 
 
@@ -180,21 +186,69 @@ def _sample() -> list[Assessment]:
     ]
 
 
-def test_workbook_has_four_sheets_and_survives_a_round_trip(tmp_path):
+def test_workbook_has_the_expected_sheets_and_survives_a_round_trip(tmp_path):
     from openpyxl import load_workbook
 
     path = build_workbook(_sample(), tmp_path / "out.xlsx",
                           {"assessed": 2, "actionable": 1, "suppressed_by_context": 1, "unattributed": 0})
     workbook = load_workbook(path)
-    assert workbook.sheetnames == ["Findings", "Action Plan", "By Owner", "Method"]
+    assert workbook.sheetnames == ["Findings", "Action Plan", "Accepted", "By Owner", "Method"]
 
     findings = workbook["Findings"]
     assert findings.freeze_panes == "B5"
     assert findings.auto_filter.ref
     assert findings.cell(row=5, column=1).value == "CVE-2021-44228"
     assert findings.cell(row=5, column=3).value == "Contain"
+    assert "Rationale" in [c.value for c in findings[4]]
     assert workbook["Action Plan"].cell(row=5, column=2).value == "CVE-2021-44228"
     assert workbook["Action Plan"].cell(row=6, column=2).value is None
+
+
+def test_accepted_sheet_carries_rationale_and_signoff_columns(tmp_path):
+    from openpyxl import load_workbook
+
+    accepted = Assessment(
+        cve_id="CVE-2024-9999", asset="reporting-svc", tier=3,
+        internet_exposed=False, data_classification="internal",
+        weakness=Weakness(cve_id="CVE-2024-9999", summary="XSS", resolved=True),
+        probability=ExploitProbability(cve_id="CVE-2024-9999", probability=0.004,
+                                       as_of="2026-09-08", resolved=True),
+        exposure=ExposureMeasure(index=96, verdict="Accept", threat=0.13, reachability=0.7,
+                                 consequence=0.5, confidence="high",
+                                 threat_basis=["EPSS puts exploitation within 30 days at 0.40%"],
+                                 reachability_basis=["Attack vector is network"],
+                                 consequence_basis=["CVSS impact C:LOW I:LOW A:NONE"]),
+        measured_at="2026-09-09T12:00:00+00:00",
+    )
+    path = build_workbook([accepted], tmp_path / "out.xlsx", None)
+    sheet = load_workbook(path)["Accepted"]
+    header = [c.value for c in sheet[4]]
+    for col in ("Rationale", "Internet", "EPSS %", "EPSS date", "Reopen triggers", "Decision", "Model"):
+        assert col in header, col
+
+    row = {header[i]: sheet.cell(row=5, column=i + 1).value for i in range(len(header))}
+    assert row["CVE"] == "CVE-2024-9999"
+    assert row["Internet"] == "Internal"
+    assert row["EPSS date"] == "2026-09-08"
+    assert row["Model"] == "bei-1.0"
+    assert "little sign anyone will try" in row["Rationale"]
+    assert "EPSS 0.40% (as of 2026-09-08)" in row["Rationale"]
+    assert row["Decision"] == "Accept risk / suppress in scanner"
+    assert "EPSS >= 0.10" in row["Reopen triggers"]
+    assert "CISA KEV" in row["Reopen triggers"]
+
+
+def test_rationale_leads_with_the_driving_factor():
+    urgent = Assessment(
+        cve_id="CVE-1", internet_exposed=True, tier=1,
+        exploitation=ConfirmedExploitation(cve_id="CVE-1", confirmed=True),
+        exposure=ExposureMeasure(index=800, verdict="Contain", threat=1.0, reachability=0.9,
+                                 consequence=0.9, confidence="high",
+                                 threat_basis=["CISA KEV lists this as exploited in the wild"]),
+    )
+    assert urgent.rationale().startswith("Contain: exploitation is likely or under way")
+    assert "internet-facing" in urgent.rationale()
+    assert "in CISA KEV" in urgent.rationale()
 
 
 def test_dashboard_is_self_contained(tmp_path):

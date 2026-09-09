@@ -8,6 +8,16 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ### Added
 
+- Every assessment carries a one-sentence `rationale()`: what drove the verdict (the deciding
+  factor and its evidence) plus the context it was judged in — internet exposure, tier, data
+  class, EPSS score and its date, KEV status, confidence. `Assessment` now also keeps `tier`,
+  `internet_exposed` and `data_classification` from the matched asset.
+- Workbook: a new **Accepted** sheet — an audit-ready register of every finding below the
+  action threshold, with the rationale, inputs, evidence gaps, model version and run timestamp,
+  and blank columns for the human decision (who, when, review-by date, reopen triggers). The
+  Findings sheet gains **Internet**, **EPSS date** and **Rationale** columns; the Method sheet
+  records the run timestamp and model version. The Markdown report now lists Accepted findings
+  with their rationale instead of dropping them.
 - Findings keep the identifier the scan gave them (`source_asset`, `source_host`,
   `source_component` on `Assessment`) even when nothing in the inventory matches, so a
   bulk import no longer produces anonymous rows. The workbook gains a **Scanner ref**
