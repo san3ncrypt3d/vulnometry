@@ -8,6 +8,11 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ### Added
 
+- Findings keep the identifier the scan gave them (`source_asset`, `source_host`,
+  `source_component` on `Assessment`) even when nothing in the inventory matches, so a
+  bulk import no longer produces anonymous rows. The workbook gains a **Scanner ref**
+  column; the Action Plan, terminal table, Markdown, CSV and dashboard fall back to the
+  scan's own label (shown as `~name`) when there is no matched asset.
 - `vulnometry inventory import EXPORT --map MAPPING.yaml`: build the business inventory
   from an arbitrary CSV/XLSX asset export (a CMDB extract, an application register). The
   mapping file names the columns and the value translations; built-in transforms cover

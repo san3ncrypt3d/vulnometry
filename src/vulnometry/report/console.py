@@ -28,6 +28,14 @@ def _bar(value: float, width: int = 12) -> str:
     return "█" * filled + "·" * (width - filled)
 
 
+def _location(item: Assessment) -> str:
+    """Matched asset name, or the scanner's own label prefixed with ~ when unmatched."""
+    if item.asset:
+        return item.asset
+    ref = item.scanner_ref()
+    return f"~{ref}" if ref else "-"
+
+
 def render_one(item: Assessment, out: Console | None = None) -> None:
     out = out or console()
     style = VERDICT_STYLE.get(item.exposure.verdict, "white")
@@ -38,6 +46,8 @@ def render_one(item: Assessment, out: Console | None = None) -> None:
     header.append(f"  BEI {item.exposure.index:g}/1000")
     if item.asset:
         header.append(f"   on {item.asset}", style="cyan")
+    elif item.scanner_ref():
+        header.append(f"   on ~{item.scanner_ref()}", style="cyan")
     out.print(Panel(header, expand=False, border_style=style.split()[-1]))
 
     if item.weakness.summary:
@@ -69,6 +79,8 @@ def render_one(item: Assessment, out: Console | None = None) -> None:
         if item.exploitation.ransomware_linked:
             kev += ", ransomware-linked"
     facts.add_row("CISA KEV", kev)
+    if not item.asset and item.scanner_ref():
+        facts.add_row("Scanner ref", f"{item.scanner_ref()}  (no inventory match)")
     if item.owner:
         facts.add_row("Owner", item.owner)
     if item.business_unit:
@@ -112,7 +124,7 @@ def render_table(items: list[Assessment], out: Console | None = None, limit: int
     table.add_column("CVE", style="bold")
     table.add_column("BEI", justify="right")
     table.add_column("Verdict")
-    table.add_column("Asset", overflow="fold", max_width=18)
+    table.add_column("Asset / ~scan ref", overflow="fold", max_width=22)
     table.add_column("Owner", overflow="fold", max_width=18)
     table.add_column("T", justify="right")
     table.add_column("R", justify="right")
@@ -124,7 +136,7 @@ def render_table(items: list[Assessment], out: Console | None = None, limit: int
             item.cve_id,
             f"{item.exposure.index:g}",
             Text(item.exposure.verdict, style=VERDICT_STYLE.get(item.exposure.verdict, "")),
-            item.asset or "-",
+            _location(item),
             item.owner or "-",
             f"{item.exposure.threat:.2f}",
             f"{item.exposure.reachability:.2f}",
@@ -166,13 +178,13 @@ def to_markdown(items: list[Assessment], summary: dict | None = None) -> str:
         lines.append("")
 
     lines += [
-        "| CVE | BEI | Verdict | Asset | Owner | Due | Fix |",
+        "| CVE | BEI | Verdict | Asset / ~scan ref | Owner | Due | Fix |",
         "|---|---:|---|---|---|---|---|",
     ]
     for item in items:
         lines.append(
             f"| {item.cve_id} | {item.exposure.index:g} | {item.exposure.verdict} "
-            f"| {item.asset or '-'} | {item.owner or '-'} | {item.due_by or '-'} "
+            f"| {_location(item)} | {item.owner or '-'} | {item.due_by or '-'} "
             f"| {', '.join(item.fixes[:2]) or '-'} |"
         )
 
@@ -180,8 +192,9 @@ def to_markdown(items: list[Assessment], summary: dict | None = None) -> str:
         if item.exposure.verdict == "Accept":
             continue
         lines += ["", f"## {item.cve_id}: {item.exposure.verdict} (BEI {item.exposure.index:g})", ""]
-        if item.asset:
-            lines.append(f"**Asset:** {item.asset} · **Owner:** {item.owner or 'unassigned'} · **Due:** {item.due_by or 'n/a'}")
+        if item.where():
+            label = "Asset" if item.asset else "Scanner ref (no inventory match)"
+            lines.append(f"**{label}:** {item.where()} · **Owner:** {item.owner or 'unassigned'} · **Due:** {item.due_by or 'n/a'}")
             lines.append("")
         if item.weakness.summary:
             lines += [item.weakness.summary.strip()[:700], ""]
@@ -204,7 +217,7 @@ def to_csv(items: list[Assessment]) -> str:
     writer = csv.writer(buffer)
     writer.writerow([
         "cve", "bei", "verdict", "threat", "reachability", "consequence",
-        "asset", "owner", "business_unit", "environment", "due_by", "sla_days",
+        "asset", "scanner_ref", "owner", "business_unit", "environment", "due_by", "sla_days",
         "cvss", "epss", "kev", "fixes", "confidence", "directive",
     ])
     for item in items:
@@ -212,7 +225,7 @@ def to_csv(items: list[Assessment]) -> str:
         writer.writerow([
             item.cve_id, item.exposure.index, item.exposure.verdict,
             item.exposure.threat, item.exposure.reachability, item.exposure.consequence,
-            item.asset, item.owner, item.business_unit, item.environment,
+            item.asset, item.scanner_ref(), item.owner, item.business_unit, item.environment,
             item.due_by, item.sla_days or "",
             severity.base_score if severity and severity.base_score is not None else "",
             item.probability.probability if item.probability.probability is not None else "",

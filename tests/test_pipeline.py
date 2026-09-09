@@ -108,6 +108,34 @@ def test_component_matching_attaches_the_right_asset():
     assert asyncio.run(run()).asset == "checkout-api"
 
 
+def test_scanner_identifiers_are_kept_even_when_nothing_matches():
+    async def run():
+        await prime_all()
+        return await assess_finding(
+            "CVE-2021-44228", inventory=INVENTORY,
+            asset_name="acme/mystery-service:pom.xml", host="mystery-01.example.com",
+            component="com.example:unrelated-lib",
+        )
+
+    result = asyncio.run(run())
+    assert result.asset == ""                                     # no inventory match
+    assert result.source_asset == "acme/mystery-service:pom.xml"  # but the scan's label survives
+    assert result.source_host == "mystery-01.example.com"
+    assert result.scanner_ref() == "acme/mystery-service:pom.xml"
+    assert result.where() == "acme/mystery-service:pom.xml"       # reports fall back to it
+
+
+def test_matched_asset_still_records_what_the_scan_called_it():
+    async def run():
+        await prime_all()
+        return await assess_finding("CVE-2021-44228", inventory=INVENTORY, host="checkout-07")
+
+    result = asyncio.run(run())
+    assert result.asset == "checkout-api"
+    assert result.source_host == "checkout-07"
+    assert result.where() == "checkout-api"
+
+
 def test_one_cve_three_verdicts():
     async def run():
         await prime_all()

@@ -88,7 +88,7 @@ def _scatter(items: list[Assessment], width: int = 470, height: int = 260) -> st
         points.append(
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="{colour}" fill-opacity="0.55" '
             f'stroke="{colour}" stroke-width="0.8"><title>{_e(item.cve_id)}: BEI {item.exposure.index:g}'
-            f'{" on " + _e(item.asset) if item.asset else ""}</title></circle>'
+            f'{" on " + _e(item.where()) if item.where() else ""}</title></circle>'
         )
 
     grid = "".join(
@@ -159,7 +159,7 @@ def _table(items: list[Assessment], limit: int = 40) -> str:
             f"<td><strong>{_e(item.cve_id)}</strong></td>"
             f'<td class="bei">{item.exposure.index:g}</td>'
             f'<td><span class="pill" style="background:{colour}">{_e(item.exposure.verdict)}</span></td>'
-            f"<td>{_e(item.asset or '-')}</td>"
+            f"<td>{_e(item.asset or (('~' + item.scanner_ref()) if item.scanner_ref() else '-'))}</td>"
             f"<td>{_e(item.owner or '-')}</td>"
             f"<td>{_e(item.due_by or '-')}</td>"
             f'<td class="muted">{_e(driver[:96])}</td>'
