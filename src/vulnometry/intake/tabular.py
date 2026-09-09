@@ -86,17 +86,45 @@ def _cell(row: list, index: int | None) -> str:
     return "" if value is None else str(value).strip()
 
 
+def _read_text_any(path: Path) -> str:
+    """Best-effort decode. Exports come out of Windows tooling as often as not."""
+    for encoding in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return path.read_text(encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 def _rows_from_csv(path: Path) -> list[list]:
+    import io
+
+    text = _read_text_any(path)
     delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
-    with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
-        sample = handle.read(8192)
-        handle.seek(0)
-        if path.suffix.lower() == ".csv":
-            try:
-                delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
-            except csv.Error:
-                delimiter = ","
-        return list(csv.reader(handle, delimiter=delimiter))
+    if path.suffix.lower() == ".csv":
+        try:
+            delimiter = csv.Sniffer().sniff(text[:8192], delimiters=",;\t|").delimiter
+        except csv.Error:
+            delimiter = ","
+    return list(csv.reader(io.StringIO(text), delimiter=delimiter))
+
+
+def read_table(path: str | Path, sheet: str = "") -> tuple[list[list], str]:
+    """Raw rows from a CSV/TSV/Excel file, plus the sheet name ('' for CSV/TSV)."""
+    path = Path(path)
+    if path.suffix.lower() in (".csv", ".tsv"):
+        return _rows_from_csv(path), ""
+    return _rows_from_excel(path, sheet)
+
+
+def find_header_row(rows: list[list]) -> int:
+    """Index of the row that looks like a header (public wrapper)."""
+    return _find_header_row(rows)
+
+
+def normalise_header(value) -> str:
+    """Lowercase, strip non-alphanumerics: the key headers are matched on."""
+    return _normalise(value)
 
 
 def _rows_from_excel(path: Path, sheet: str = "") -> tuple[list[list], str]:
