@@ -22,6 +22,7 @@ src/vulnometry/
 ├── net.py           Token buckets, retries, SQLite feed cache.
 │
 ├── inventory.py     Business context: assets, tiers, owners, SLA policy.
+├── inventory_import.py  Build an inventory from an arbitrary CSV/XLSX export + a mapping file.
 ├── exposure.py      The BEI model. See docs/SCORING.md.
 ├── assessment.py    Orchestrator: fan out to feeds, measure, attach context.
 │

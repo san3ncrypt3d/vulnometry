@@ -43,6 +43,7 @@ class AssetProfile:
     compensating_controls: list[str] = field(default_factory=list)
     components: list[str] = field(default_factory=list)
     hosts: list[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
     notes: str = ""
 
 
@@ -90,6 +91,13 @@ class AssetProfile:
         if text == self.name.lower():
             return True
         return any(fnmatch.fnmatch(text, pattern.lower()) for pattern in self.hosts)
+
+    def matches_alias(self, value: str) -> bool:
+        """Another name this asset is known by: a scanner project, a code name, a ticket key."""
+        text = (value or "").lower()
+        if not text:
+            return False
+        return any(fnmatch.fnmatch(text, pattern.lower()) for pattern in self.aliases)
 
     def sla_days(self, verdict: str) -> int:
         base = BASE_SLA.get(verdict, 0)
@@ -140,10 +148,9 @@ class Inventory:
                 clean["owner"] = entry["team"]
             if "packages" in entry and not clean.get("components"):
                 clean["components"] = entry["packages"]
-            if isinstance(clean.get("regimes"), str):
-                clean["regimes"] = [clean["regimes"]]
-            if isinstance(clean.get("compensating_controls"), str):
-                clean["compensating_controls"] = [clean["compensating_controls"]]
+            for list_field in ("regimes", "compensating_controls", "components", "hosts", "aliases"):
+                if isinstance(clean.get(list_field), str):
+                    clean[list_field] = [clean[list_field]]
             assets.append(AssetProfile(**clean))
         return cls(
             assets=assets,
@@ -189,11 +196,13 @@ class Inventory:
 
     def by_name(self, name: str) -> AssetProfile | None:
         target = (name or "").lower()
+        if not target:
+            return None
         for asset in self.assets:
             if asset.name.lower() == target:
                 return asset
         for asset in self.assets:
-            if asset.matches_host(name):
+            if asset.matches_host(name) or asset.matches_alias(name):
                 return asset
         return None
 

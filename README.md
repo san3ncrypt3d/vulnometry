@@ -201,6 +201,22 @@ confident wrong answer.
 `vulnometry inventory show` prints what it parsed. Vulnometry finds the file automatically if it
 is named `vulnometry.yaml` and sits in the working directory, or you can pass `--inventory`.
 
+### Importing from an asset export you already keep
+
+If the business context already lives in a CMDB extract, an application register or a spreadsheet
+a security team maintains, a mapping file says which column feeds which field and how to translate
+the codes. Nothing in it is tool-specific; the column names and value tables are all yours.
+
+```bash
+vulnometry inventory import assets.csv --map mapping.yaml -o vulnometry.yaml   # freeze to YAML
+vulnometry import scan.xlsx --inventory assets.csv --inventory-map mapping.yaml  # or use it directly
+```
+
+Re-running `import` merges: columns named in the mapping are refreshed from the export, every
+other field you added by hand is kept. `matches` on a scanner project name, code name or ticket
+key go in a new `aliases` list, so findings attach even when the scanner does not use the asset's
+own name. See [`examples/inventory-mapping.yaml`](examples/inventory-mapping.yaml).
+
 ## Bulk analysis
 
 Most vulnerability work arrives as a spreadsheet somebody was emailed.
@@ -266,6 +282,7 @@ Also served at `/dashboard` when running `vulnometry serve http`.
 | `vulnometry sweep FILE` | Check a dependency manifest or SBOM |
 | `vulnometry watch --days 7` | Newly confirmed exploitation from CISA KEV |
 | `vulnometry inventory init` | Write a commented inventory template |
+| `vulnometry inventory import FILE --map M` | Build the inventory from an asset export via a column mapping |
 | `vulnometry doctor` | Check feeds, keys, inventory coverage and providers |
 | `vulnometry ask "..."` | Ask a model, with the actions attached |
 | `vulnometry serve mcp` | Run as an MCP server |

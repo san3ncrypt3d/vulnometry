@@ -8,6 +8,15 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ### Added
 
+- `vulnometry inventory import EXPORT --map MAPPING.yaml`: build the business inventory
+  from an arbitrary CSV/XLSX asset export (a CMDB extract, an application register). The
+  mapping file names the columns and the value translations; built-in transforms cover
+  multi-value cells, host extraction from URLs and tri-state booleans. Re-running merges,
+  keeping fields added by hand. Also usable inline: `--inventory EXPORT --inventory-map MAPPING`.
+  Template in `examples/inventory-mapping.yaml`.
+- `aliases` on an asset: other names a scan might use for it (a scanner project, a code
+  name, a ticket key). `Inventory.by_name()` resolves them, with glob support.
+- CSV intake now decodes cp1252 / latin-1 exports, not just UTF-8.
 - Dashboard screenshot in the README, with the sample export
   (`examples/scan-export.csv`) and generated page (`examples/exposure.html`) that produced it.
 

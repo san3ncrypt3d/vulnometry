@@ -54,6 +54,24 @@ def _override_asset(args) -> AssetProfile | None:
     )
 
 
+def _load_inventory(args) -> Inventory:
+    """Discover a vulnometry.yaml, or build one from a raw export when --inventory-map is given."""
+    map_path = getattr(args, "inventory_map", None)
+    inv_path = getattr(args, "inventory", None)
+    if not map_path:
+        return Inventory.discover(inv_path)
+    if not inv_path:
+        ERR.print("[red]--inventory-map needs --inventory pointing at the export file.[/]")
+        raise SystemExit(2)
+    from .inventory_import import MappingError, build_inventory
+
+    try:
+        return build_inventory(inv_path, map_path, sheet=getattr(args, "inventory_sheet", "") or "")
+    except (MappingError, FileNotFoundError, ValueError) as exc:
+        ERR.print(f"[red]{exc}[/]")
+        raise SystemExit(2) from exc
+
+
 def _collect_ids(args) -> list[str]:
     ids: list[str] = []
     for value in getattr(args, "cve", None) or []:
@@ -125,7 +143,7 @@ async def cmd_measure(args) -> int:
         ERR.print("[red]No CVE identifiers found.[/] Pass them as arguments, with -f FILE, or on stdin.")
         return 2
 
-    inventory = Inventory.discover(args.inventory)
+    inventory = _load_inventory(args)
     lens = args.lens or ("full" if len(ids) <= 5 else "signal")
 
     findings = [{"cve": cve, "asset": args.asset} for cve in ids] if args.asset else ids
@@ -180,7 +198,7 @@ async def cmd_import(args) -> int:
 
     ERR.print(f"Read [bold]{len(rows)}[/] finding(s) from {path.name}: {label}")
 
-    inventory = Inventory.discover(args.inventory)
+    inventory = _load_inventory(args)
     if inventory.assets:
         ERR.print(f"Matching against [bold]{len(inventory.assets)}[/] known asset(s) from {inventory.source_path}")
     else:
@@ -250,7 +268,7 @@ async def cmd_sweep(args) -> int:
         return 1
 
     OUT.print()
-    inventory = Inventory.discover(args.inventory)
+    inventory = _load_inventory(args)
     with ERR.status(f"Measuring {len(findings)} finding(s) against your inventory..."):
         results = await assess_portfolio(
             findings[:250], inventory=inventory, lens=args.lens, asset=_override_asset(args)
@@ -264,7 +282,7 @@ async def cmd_sweep(args) -> int:
 
 async def cmd_compare(args) -> int:
     """Run one CVE against every asset in the inventory."""
-    inventory = Inventory.discover(args.inventory)
+    inventory = _load_inventory(args)
     if not inventory.assets:
         ERR.print("[red]No inventory found.[/] Run [bold]vulnometry inventory init[/] first.")
         return 2
@@ -312,7 +330,19 @@ async def cmd_inventory(args) -> int:
         OUT.print("field sharpens the measurement. Then run [bold]vulnometry measure CVE-... [/]")
         return 0
 
-    inventory = Inventory.discover(args.path)
+    if args.action == "import":
+        return await _cmd_inventory_import(args)
+
+    if getattr(args, "mapping", None) and getattr(args, "export", None):
+        from .inventory_import import MappingError, build_inventory
+
+        try:
+            inventory = build_inventory(args.export, args.mapping, sheet=args.sheet or "")
+        except (MappingError, FileNotFoundError, ValueError) as exc:
+            ERR.print(f"[red]{exc}[/]")
+            return 2
+    else:
+        inventory = Inventory.discover(args.path)
     if args.action == "show":
         if not inventory.assets:
             ERR.print("[yellow]No inventory found.[/] Run [bold]vulnometry inventory init[/] to create one.")
@@ -341,6 +371,72 @@ async def cmd_inventory(args) -> int:
     return 0
 
 
+async def _cmd_inventory_import(args) -> int:
+    from .inventory_import import (
+        MappingError,
+        assets_from_table,
+        dump_inventory_yaml,
+        load_mapping,
+        merge_assets,
+    )
+
+    if not args.export or not args.mapping:
+        ERR.print("[red]Usage:[/] vulnometry inventory import EXPORT.csv --map MAPPING.yaml [-o vulnometry.yaml]")
+        return 2
+
+    try:
+        mapping = load_mapping(args.mapping)
+        assets, warnings = assets_from_table(args.export, mapping, sheet=args.sheet or "")
+    except (MappingError, FileNotFoundError, ValueError) as exc:
+        ERR.print(f"[red]{exc}[/]")
+        return 2
+
+    if not assets:
+        ERR.print(f"[red]No assets parsed from {args.export}.[/] Check the mapping's name column.")
+        for warning in warnings[:10]:
+            ERR.print(f"[yellow]  {warning}[/]")
+        return 2
+
+    authoritative = set(mapping["columns"])
+    target = Path(args.output or "vulnometry.yaml")
+    inventory = Inventory(assets=assets)
+    merge_report = None
+
+    if target.exists() and not args.overwrite:
+        existing = Inventory.load(target)
+        inventory, merge_report = merge_assets(existing, assets, authoritative)
+        ERR.print(f"Merging into existing {target} ({len(existing.assets)} asset(s))")
+
+    target.write_text(dump_inventory_yaml(inventory), encoding="utf-8")
+    OUT.print(f"[green]Wrote {target}[/] — {len(inventory.assets)} asset(s)")
+
+    tiers: dict[str, int] = {}
+    for asset in inventory.assets:
+        tiers[asset.tier_label] = tiers.get(asset.tier_label, 0) + 1
+    OUT.print("  tiers: " + ", ".join(f"{k} {v}" for k, v in sorted(tiers.items())))
+    OUT.print(
+        f"  with aliases: {sum(1 for a in inventory.assets if a.aliases)}   "
+        f"with hosts: {sum(1 for a in inventory.assets if a.hosts)}   "
+        f"internet-exposed: {sum(1 for a in inventory.assets if a.internet_exposed)}"
+    )
+    if merge_report is not None:
+        OUT.print(
+            f"  new: {len(merge_report['added'])}   "
+            f"changed: {len(merge_report['changed'])}   "
+            f"kept as-is (not in export): {len(merge_report['untouched_by_export'])}"
+        )
+        for name, diffs in merge_report["changed"][:10]:
+            OUT.print(f"    ~ {name}: {', '.join(diffs)}")
+
+    if warnings:
+        ERR.print(f"[yellow]{len(warnings)} warning(s):[/]")
+        for warning in warnings[:15]:
+            ERR.print(f"[yellow]  {warning}[/]")
+        if len(warnings) > 15:
+            ERR.print(f"[yellow]  ...and {len(warnings) - 15} more[/]")
+    return 0
+
+
 async def cmd_watch(args) -> int:
     from .feeds import catalogue as kev_feed
 
@@ -356,7 +452,7 @@ async def cmd_watch(args) -> int:
         return 0
 
     if args.measure:
-        inventory = Inventory.discover(args.inventory)
+        inventory = _load_inventory(args)
         ids = [e.cve_id for e in entries][: args.limit]
         if not ids:
             OUT.print("[green]Nothing new.[/]")
@@ -558,6 +654,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""examples:
   vulnometry inventory init                        describe what you run
+  vulnometry inventory import assets.csv --map m.yaml   build the inventory from an existing export
   vulnometry measure CVE-2021-44228                measure one finding
   vulnometry compare CVE-2021-44228                the same CVE across your whole estate
   vulnometry import qualys-export.xlsx             bulk: spreadsheet in, workbook + dashboard out
@@ -590,7 +687,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--dashboard", metavar="FILE.html", help="write a self-contained HTML dashboard")
         p.add_argument("--title", help="dashboard title")
         p.add_argument("--min-index", type=float, default=0.0, help="drop findings below this BEI")
-        p.add_argument("--inventory", help="path to an inventory file")
+        p.add_argument("--inventory", help="path to an inventory file, or a raw asset export when --inventory-map is given")
+        p.add_argument("--inventory-map", metavar="MAP.yaml",
+                       help="mapping file: read --inventory as an arbitrary CSV/XLSX asset export")
+        p.add_argument("--inventory-sheet", default="", help="worksheet in an XLSX asset export")
         p.add_argument("--compact", action="store_true", help="always use the table view")
 
     m = sub.add_parser("measure", help="measure one or more CVEs")
@@ -627,12 +727,19 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("cve")
     c.add_argument("--limit", type=int, default=15)
     c.add_argument("--inventory")
+    c.add_argument("--inventory-map", metavar="MAP.yaml", help="read --inventory as a raw asset export")
+    c.add_argument("--inventory-sheet", default="", help="worksheet in an XLSX asset export")
     c.set_defaults(func=cmd_compare, is_async=True)
 
-    inv = sub.add_parser("inventory", help="create or inspect your business inventory")
-    inv.add_argument("action", choices=["init", "show", "json"], nargs="?", default="show")
-    inv.add_argument("--path", help="inventory file path")
-    inv.add_argument("--force", action="store_true")
+    inv = sub.add_parser("inventory", help="create, import or inspect your business inventory")
+    inv.add_argument("action", choices=["init", "show", "json", "import"], nargs="?", default="show")
+    inv.add_argument("export", nargs="?", help="for 'import': the CSV/XLSX asset export to read")
+    inv.add_argument("--path", help="inventory file path (init/show/json)")
+    inv.add_argument("--map", dest="mapping", metavar="MAP.yaml", help="for 'import'/'show': column mapping file")
+    inv.add_argument("-o", "--output", help="for 'import': inventory file to write (default vulnometry.yaml)")
+    inv.add_argument("--sheet", default="", help="for 'import': worksheet in an XLSX export")
+    inv.add_argument("--overwrite", action="store_true", help="for 'import': replace the target instead of merging")
+    inv.add_argument("--force", action="store_true", help="for 'init': overwrite an existing file")
     inv.set_defaults(func=cmd_inventory, is_async=True)
 
     w = sub.add_parser("watch", help="newly confirmed exploitation from the CISA KEV catalogue")
@@ -642,6 +749,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--limit", type=int, default=40)
     w.add_argument("--format", choices=["table", "json"], default="table")
     w.add_argument("--inventory")
+    w.add_argument("--inventory-map", metavar="MAP.yaml", help="read --inventory as a raw asset export")
+    w.add_argument("--inventory-sheet", default="", help="worksheet in an XLSX asset export")
     w.set_defaults(func=cmd_watch, is_async=True)
 
     a = sub.add_parser("ask", help="ask a model, with the actions attached")

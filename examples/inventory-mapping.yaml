@@ -1,0 +1,53 @@
+# Map an existing asset export (CSV or XLSX) onto a vulnometry inventory.
+#
+#   vulnometry inventory import assets.csv --map inventory-mapping.yaml -o vulnometry.yaml
+#
+# or skip the file on disk and use the export directly:
+#
+#   vulnometry import scan.xlsx --inventory assets.csv --inventory-map inventory-mapping.yaml
+#
+# The column names and value tables below are examples. Replace them with the
+# headers and codes your own export actually uses. Nothing here is tool-specific.
+
+# 'columns' points each asset field at one header, or a list of headers to try in order.
+columns:
+  name: [Application, App Name, Service]          # required
+  tier: Criticality
+  owner: Owner
+  business_unit: Business Unit
+  environment: Environment
+  data_classification: Information Classification
+  regimes: Compliance
+  aliases: [Scanner Project, Also Known As]       # other names a scan might use for this asset
+  hosts: URL                                      # hostnames pulled out of here
+  internet_exposed: [Internet Facing, Customer Facing]
+
+# 'values' translates raw cell text (matched case-insensitively) to what vulnometry expects.
+# 1/2/3, high/medium/low and critical/high/moderate/low are understood without listing them.
+values:
+  tier:
+    gold: 1
+    silver: 2
+    bronze: 3
+  data_classification:
+    secret: restricted
+    "confidential - internal": confidential
+    "internal use only": internal
+    unclassified: public
+  regimes:            # applied to each token after splitting; unlisted tokens pass through lowercased
+    pci: pci-dss
+    "sarbanes-oxley": sox
+
+# 'transforms' shape a raw cell before translation.
+#   list fields: split_lines | split_delimited | split_comma | extract_hosts
+#   tri-state fields (internet_exposed, deployed): any_affirmative | all_affirmative | first
+transforms:
+  aliases: split_lines
+  regimes: split_delimited
+  hosts: extract_hosts
+  internet_exposed: any_affirmative
+
+# Optional: override which cell values count as yes / no for tri-state fields.
+# booleans:
+#   true: [yes, "y", "true", external]
+#   false: [no, "n", "false", internal, ""]
