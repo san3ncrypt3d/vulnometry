@@ -256,9 +256,12 @@ Reads `.xlsx`, `.xls`, `.csv` and `.tsv`, plus native JSON from Trivy, Grype, Sn
 Dependabot and SARIF. `vulnometry sweep` handles lockfiles and SBOMs: requirements.txt,
 poetry.lock, package-lock.json, go.mod, Gemfile.lock, Cargo.lock, pom.xml, CycloneDX and SPDX.
 
-The workbook it writes has four sheets: Findings (every row, colour-coded, filterable, frozen
-header), Action Plan (only what needs doing, sorted by due date), By Owner (workload per team),
-and Method (how the numbers were produced).
+The workbook it writes has five sheets: Findings (every row, colour-coded, filterable, frozen
+header, with a plain-language Rationale column), Action Plan (only what needs doing, sorted by
+due date), Accepted (everything below the action threshold, with the rationale, the EPSS score
+and its date, internet exposure, evidence gaps, model version and timestamp, plus blank
+columns for who accepted it, the review-by date and what should reopen it), By Owner (workload
+per team), and Method (how the numbers were produced).
 
 When a finding matches no asset in your inventory it is still scored (pessimistically) and
 still actionable: every report keeps the name the scanner gave it — a Scanner ref column in the
