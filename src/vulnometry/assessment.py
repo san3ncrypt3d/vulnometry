@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections import Counter
 from datetime import datetime, timezone
 
 from .config import settings
@@ -66,6 +67,7 @@ async def assess_finding(
     component: str = "",
     lens: str = "full",
     scanner_severity: str = "",
+    scanner: str = "",
 ) -> Assessment:
     """Assess one CVE against one place you run it."""
     cve_id = canonical_cve(cve_id)
@@ -128,6 +130,7 @@ async def assess_finding(
         data_classification=asset.data_classification,
         due_by=due_by,
         sla_days=asset.sla_days(measure.verdict) or None,
+        scanner=scanner,
         scanner_severity=scanner_severity,
         source_asset=asset_name,
         source_host=host,
@@ -178,6 +181,7 @@ async def assess_portfolio(
                 component=row.get("component", ""),
                 lens=lens,
                 scanner_severity=str(row.get("raw_severity") or "").strip(),
+                scanner=str(row.get("scanner") or "").strip(),
             )
 
     results = await asyncio.gather(*(one(row) for row in normalised))
@@ -271,7 +275,9 @@ def severity_crosstab(assessments: list[Assessment]) -> dict:
         keys += sorted(k for k in grid if k not in SEVERITY_BANDS)
         return {k: grid[k] for k in keys}
 
+    names = Counter(i.scanner for i in assessments if i.scanner)
     return {
+        "scanner_name": names.most_common(1)[0][0] if names else "",
         "by_scanner_severity": order(by_scanner),
         "by_cvss_band": order(by_cvss),
         "scanner_severity_available": bool(by_scanner),

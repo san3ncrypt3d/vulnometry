@@ -19,6 +19,12 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ### Changed
 
+- Dashboard names the tool that produced the export rather than saying "the scanner".
+  `sniff_tabular_scanner()` recognises Snyk, Tenable Nessus, Qualys, Rapid7 InsightVM, Wiz,
+  Prisma Cloud, Trivy and Dependabot exports by the columns only that tool emits, and every
+  signature needs at least two of them so a stray "Plugin ID" in a hand-made spreadsheet
+  cannot make a report claim the data came from Nessus. Unrecognised exports still read
+  "Scanner". Purely cosmetic: nothing in the model branches on it.
 - Dashboard: dropped the "Highest exposure" findings table. It grew with the scan and on a
   real run pushed the page past 40 KB while duplicating the workbook's Findings and Action
   Plan sheets, which are the right place to read individual rows. The page is now a fixed

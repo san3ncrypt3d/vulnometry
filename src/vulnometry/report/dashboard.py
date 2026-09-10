@@ -117,18 +117,23 @@ header h1 { margin:0 0 4px; font-size:21px; letter-spacing:.2px; }
 header p { margin:0; opacity:.72; font-size:13px; }
 main { padding:24px 32px 56px; max-width:1240px; margin:0 auto; }
 .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; margin-bottom:22px; }
-.card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; }
+.grid > * { min-width:0; }
+.card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px 20px; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
+.card > .scroll { overflow-x:auto; max-width:100%; }
+.card p { overflow-wrap:anywhere; }
 .card h2 { margin:0 0 14px; font-size:12px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:700; }
 .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:14px; margin-bottom:22px; }
 .kpi { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
-.kpi .n { font-size:28px; font-weight:700; color:var(--ink); line-height:1.1; }
+.kpi { min-width:0; }
+.kpi .n { font-size:28px; font-weight:700; color:var(--ink); line-height:1.1; overflow-wrap:anywhere; }
+.kpi .s { overflow-wrap:anywhere; }
 .kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.7px; color:var(--muted); margin-top:5px; }
 .kpi .s { font-size:11px; color:var(--muted); margin-top:3px; opacity:.85; }
 .kpi.alert .n { color:#c0392b; }
 .kpi.good .n { color:#1e7a4c; }
-table.heat { border-collapse:separate; border-spacing:3px; width:100%; }
+table.heat { border-collapse:separate; border-spacing:3px; width:100%; table-layout:fixed; }
 table.heat th { padding:6px 8px; border:none; }
-table.heat th.rl { text-align:left; font-size:11px; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:600; white-space:nowrap; max-width:230px; overflow:hidden; text-overflow:ellipsis; }
+table.heat th.rl { text-align:left; font-size:11px; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:600; white-space:nowrap; width:34%; max-width:0; overflow:hidden; text-overflow:ellipsis; }
 table.heat td { border:none; padding:0; }
 td.hc { border-radius:5px; text-align:center; height:30px; min-width:52px; }
 td.hc span { color:#fff; font-weight:700; font-size:12px; font-variant-numeric:tabular-nums; }
@@ -163,7 +168,7 @@ def _mins(reduction: dict) -> str:
     low, high = (reduction.get("triage_minutes_assumed") or [30, 120])[:2]
     def h(m):
         return f"{m / 60:g} h" if m >= 60 else f"{m:g} min"
-    return f"{h(low)}\u2013{h(high)}"
+    return f"{h(low)} to {h(high)}"
 
 
 def _hours_band(reduction: dict) -> str:
@@ -171,7 +176,7 @@ def _hours_band(reduction: dict) -> str:
     high = reduction.get("analyst_hours_saved_high", 0)
     if not high:
         return "0"
-    return f"{low:,g}\u2013{high:,g}"
+    return f"{low:,g} to {high:,g}"
 
 
 def _rankings(cross: dict, counts: dict, focus=("Critical", "High")) -> str:
@@ -192,9 +197,11 @@ def _rankings(cross: dict, counts: dict, focus=("Critical", "High")) -> str:
     def spare(grid):
         return sum(sum(r.values()) for b, r in grid.items() if b not in focus)
 
-    sources = [("CVSS &mdash; NVD", by_cvss)]
+    sources = [("CVSS, from NVD", by_cvss)]
     if by_scanner:
-        sources.insert(0, ("Scanner said", by_scanner))
+        # Name the tool when the export identified it; a reader recognises
+        # "Snyk" and has to decode "the scanner".
+        sources.insert(0, (cross.get("scanner_name") or "Scanner", by_scanner))
     rows = []
     for label, grid in sources:
         cells = "".join(f'<td class="rt">{total(grid, b) or "&middot;"}</td>' for b in focus)
@@ -353,7 +360,7 @@ def build_dashboard(
 <body>
 <header>
   <h1>{_e(title)}</h1>
-  <p>{len(items)} findings measured · generated {date.today().isoformat()} · Business Exposure Index, 0&ndash;1000</p>
+  <p>{len(items)} findings measured · generated {date.today().isoformat()} · Business Exposure Index, 0 to 1000</p>
 </header>
 <main>
 
@@ -406,35 +413,37 @@ def build_dashboard(
   <p class="muted">A severity-driven queue would call
   <strong>{reduction.get("urgent_on_severity_alone", 0):,}</strong> of these urgent
   (CVSS &ge; {reduction.get("severity_floor", 7.0):g}). Measuring exposure where you actually run
-  them leaves <strong>{reduction.get("actionable_findings", 0):,}</strong> &mdash;
+  them leaves <strong>{reduction.get("actionable_findings", 0):,}</strong>, which is
   <strong>{reduction.get("analysis_reduction_pct", 0)}% of that queue removed</strong>, and what
   is left is {reduction.get("actionable_work_items", 0):,} package
   {"upgrade" if reduction.get("actionable_work_items") == 1 else "upgrades"}, because one bump
   closes every CVE that package carries. Separately, and not counted as analysis, those
   {reduction.get("findings_assessed", 0):,} rows describe
   {reduction.get("unique_cves", 0):,} distinct CVEs across
-  {reduction.get("cve_asset_pairs", 0):,} CVE&nbsp;&times;&nbsp;asset decisions: a scanner emits one
+  {reduction.get("cve_asset_pairs", 0):,} CVE-by-asset decisions. A scanner emits one
   row per (CVE, project, manifest), which inflates the count before anyone judges anything.</p>
 </div>''' if reduction.get("findings_assessed") else ""}
 
 {f'''<div class="card">
-  <h2>Ranked three ways &mdash; the same findings</h2>
-  {_rankings(cross, counts)}
+  <h2>The same findings, ranked three ways</h2>
+  <div class="scroll">{_rankings(cross, counts)}</div>
   <p class="muted">
-  {(f"The scanner called <strong>{s_total}</strong> of these <strong>{_e(s_band)}</strong>; "
+  {(f"{_e(cross.get('scanner_name') or 'The scanner')} called <strong>{s_total}</strong> of "
+    f"these <strong>{_e(s_band)}</strong>; "
     f"NVD&rsquo;s CVSS calls <strong>{c_total}</strong> <strong>{_e(c_band)}</strong>; "
     if by_scanner and s_band else
     f"NVD&rsquo;s CVSS calls <strong>{c_total}</strong> <strong>{_e(c_band)}</strong>; ")}
   measuring exposure where you actually run them leaves
   <strong>{actionable_n}</strong> needing action and <strong>{accepted}</strong> accepted.
-  The first two rows disagree because a scanner&rsquo;s own rating is not CVSS &mdash; neither
-  is wrong, and neither is a verdict. &lsquo;other&rsquo; is everything below High. Accepted
-  findings are recorded with their reasoning in the workbook&rsquo;s Accepted sheet.</p>
+  The first two rows disagree because a scanner&rsquo;s own rating is not CVSS. Neither is
+  wrong, and neither is a verdict. &ldquo;Other&rdquo; is everything rated below High.
+  Accepted findings are recorded with their reasoning in the workbook&rsquo;s Accepted
+  sheet.</p>
 </div>''' if by_cvss else ""}
 
 {f'''<div class="card">
-  <h2>Where the work sits &mdash; {_e(heat_dimension)} &times; verdict</h2>
-  {heat}
+  <h2>Where the work sits: {_e(heat_dimension)} by verdict</h2>
+  <div class="scroll">{heat}</div>
   <p class="muted">Colour is the verdict, depth is the count. Rows are ordered by total exposure,
   so the top row is where attention buys the most. A row that is wide on the right and empty on
   the left is carrying volume, not risk.</p>
