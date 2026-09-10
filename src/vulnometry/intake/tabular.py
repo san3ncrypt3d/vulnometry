@@ -28,8 +28,14 @@ COLUMN_ALIASES = {
     "version": [
         "version", "installedversion", "packageversion", "currentversion", "pkgversion",
     ],
+    # The finding's own severity. Deliberately NOT "criticality": every scanner
+    # uses that for the *asset* (Snyk's PROJECT_CRITICALITY is exactly that), and
+    # asset criticality is modelled separately as tier. Matching it here silently
+    # populated severity with a business-criticality tag.
     "raw_severity": [
-        "severity", "risk", "riskfactor", "criticality", "priority", "rating", "cvssseverity",
+        "issueseverity", "vulnerabilityseverity", "vulnseverity", "findingseverity",
+        "severitylevel", "cvssseverity", "severity", "riskfactor", "risk", "priority",
+        "rating",
     ],
     "owner": ["owner", "assignee", "team", "responsible", "contact", "custodian"],
     "business_unit": ["businessunit", "bu", "department", "division", "org", "group"],
@@ -37,6 +43,39 @@ COLUMN_ALIASES = {
 }
 
 _MAX_SCAN_ROWS = 25
+
+# Recognisable export shapes, by columns only a given tool emits. Used to name
+# the tool in reports so a reader sees "Snyk" rather than "the scanner". Purely
+# cosmetic: nothing in the model branches on it.
+# Each signature needs at least two distinctive columns. One is not enough: a
+# stray "Plugin ID" in somebody's hand-made spreadsheet should not make the
+# report claim the data came from Nessus.
+_SCANNER_SIGNATURES = [
+    ("Snyk", {"issueseverity", "projectname"}),
+    ("Snyk", {"issueseverity", "orgname"}),
+    ("Tenable Nessus", {"pluginid", "pluginname"}),
+    ("Tenable Nessus", {"pluginid", "pluginoutput"}),
+    ("Qualys", {"qid", "severitylevel"}),
+    ("Qualys", {"qid", "threat"}),
+    ("Rapid7 InsightVM", {"vulnerabilityid", "assetid"}),
+    ("Wiz", {"vulnerabilityexternalid", "resourcename"}),
+    ("Prisma Cloud", {"packagepath", "registry"}),
+    ("Trivy", {"vulnerabilityid", "pkgname"}),
+    ("Dependabot", {"dependabotalertnumber", "manifestpath"}),
+]
+
+
+def sniff_tabular_scanner(headers: list, sheet_name: str = "") -> str:
+    """Name the tool that produced a spreadsheet export, or "" if unrecognisable."""
+    present = {_normalise(h) for h in headers if h}
+    for name, signature in _SCANNER_SIGNATURES:
+        if signature <= present:
+            return name
+    sheet = _normalise(sheet_name)
+    for name, _ in _SCANNER_SIGNATURES:
+        if sheet and name.split()[0].lower() in sheet:
+            return name
+    return ""
 
 
 def _normalise(header) -> str:
@@ -194,6 +233,7 @@ def parse_tabular(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
     header_index = _find_header_row(rows)
     headers = list(rows[header_index])
     mapping = _map_columns(headers)
+    scanner = sniff_tabular_scanner(headers, sheet_name)
     body = rows[header_index + 1 :]
 
     findings: list[dict] = []
@@ -217,6 +257,7 @@ def parse_tabular(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
             "component": _cell(row, mapping.get("component")),
             "version": _cell(row, mapping.get("version")),
             "raw_severity": _cell(row, mapping.get("raw_severity")),
+            "scanner": scanner,
             "owner": _cell(row, mapping.get("owner")),
             "business_unit": _cell(row, mapping.get("business_unit")),
             "environment": _cell(row, mapping.get("environment")),

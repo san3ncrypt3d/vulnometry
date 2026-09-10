@@ -201,6 +201,15 @@ class Assessment(Serialisable):
     due_by: str = ""
     sla_days: int | None = None
 
+    # the tool that produced the export, when it could be identified. Cosmetic:
+    # it names the source in reports and nothing in the model branches on it.
+    scanner: str = ""
+
+    # what the scanner called this finding's severity, verbatim. Every scanner
+    # rates differently and none of them is CVSS, so it is kept for comparison
+    # and never used in the score.
+    scanner_severity: str = ""
+
     # what the scanner or spreadsheet called this finding's location, kept verbatim
     # whether or not it matched an asset in the inventory
     source_asset: str = ""

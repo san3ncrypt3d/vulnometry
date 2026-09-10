@@ -149,3 +149,97 @@ def test_plain_text_fallback(tmp_path):
     path.write_text("Please patch CVE-2021-44228 and cve-2023-40000 before Friday.")
     findings, label = load_findings(path)
     assert {f["cve"] for f in findings} == {"CVE-2021-44228", "CVE-2023-40000"}
+
+
+def test_severity_column_is_the_findings_own_not_the_assets():
+    """Regression: a Snyk export has ISSUE_SEVERITY and PROJECT_CRITICALITY.
+
+    'criticality' used to be a raw_severity alias, and the longest-alias-first
+    tiebreak made it beat 'severity', so every Snyk import silently recorded the
+    project's business-criticality tag as the finding's severity.
+    """
+    from vulnometry.intake.tabular import _map_columns
+
+    snyk = ["ISSUE_SEVERITY_RANK", "ISSUE_SEVERITY", "CVE", "PROJECT_NAME",
+            "PROJECT_CRITICALITY", "PROJECT_ENVIRONMENT", "PACKAGE_NAME_AND_VERSION"]
+    mapping = _map_columns(snyk)
+    assert snyk[mapping["raw_severity"]] == "ISSUE_SEVERITY"
+
+    # and where only an asset-criticality column exists, severity stays unmapped
+    # rather than being filled with the wrong thing
+    assert "raw_severity" not in _map_columns(["CVE", "Asset", "Criticality"])
+
+    # the common spellings still resolve
+    for headers, expected in (
+        (["CVE", "Severity"], "Severity"),
+        (["CVE", "Risk"], "Risk"),
+        (["CVE", "Severity Level", "Criticality"], "Severity Level"),
+        (["CVE", "CVSS Severity"], "CVSS Severity"),
+    ):
+        assert headers[_map_columns(headers)["raw_severity"]] == expected
+
+
+def test_scanner_severity_reaches_the_assessment_and_the_crosstab():
+    from vulnometry.assessment import cvss_band, scanner_band
+
+    assert scanner_band("CRITICAL") == "Critical"
+    assert scanner_band("moderate") == "Medium"      # Red Hat / GHSA spelling
+    assert scanner_band("Important") == "High"       # Red Hat spelling
+    assert scanner_band("9.8") == "Critical"         # numeric scanners
+    assert scanner_band("") == ""
+    assert scanner_band("Bizarre") == "Bizarre"      # surfaced, not forced into a band
+
+    assert cvss_band(9.8) == "Critical"
+    assert cvss_band(7.0) == "High"
+    assert cvss_band(4.0) == "Medium"
+    assert cvss_band(0.1) == "Low"
+    assert cvss_band(0) == "None"
+
+
+def test_severity_bands_only_accept_a_plausible_score():
+    """A scanner emitting nan, inf or a negative must surface, not be bucketed.
+
+    float() parses all three. nan compares False against every threshold and so
+    fell through to "None"; inf cleared the Critical threshold. Both contradict
+    the promise that an unrecognised value is shown rather than hidden.
+    """
+    from vulnometry.assessment import scanner_band
+
+    assert scanner_band("nan") == "Nan"
+    assert scanner_band("inf") == "Inf"
+    assert scanner_band("-3") == "-3"
+    assert scanner_band("11") == "11"
+    assert scanner_band("9.8") == "Critical"
+    assert scanner_band("10") == "Critical"
+    assert scanner_band("0") == "None"
+
+
+def test_dashboard_escapes_everything_that_came_from_data(tmp_path):
+    """Asset names, owners and the scanner name reach the page from the inventory
+    and the export, so none of them may be interpolated raw."""
+    import asyncio
+
+    from vulnometry.assessment import assess_portfolio, portfolio_summary
+    from vulnometry.inventory import Inventory
+    from vulnometry.report.dashboard import build_dashboard
+
+    hostile = '<script>alert("xss")</script>'
+    inventory = Inventory.from_dict({"assets": [{
+        "name": hostile, "tier": 1, "owner": hostile, "business_unit": hostile,
+        "internet_exposed": True, "aliases": ["evil-proj"],
+    }]})
+
+    async def run():
+        return await assess_portfolio(
+            [{"cve": "CVE-2021-44228", "asset": "evil-proj",
+              "raw_severity": hostile, "scanner": hostile}],
+            inventory=inventory, lens="signal")
+
+    results = asyncio.run(run())
+    summary = portfolio_summary(results)
+    page = tmp_path / "dash.html"
+    build_dashboard(results, page, summary, title=hostile)
+    html = page.read_text()
+
+    assert "<script>alert" not in html, "data reached the page unescaped"
+    assert "&lt;script&gt;" in html, "the hostile string should still be visible, escaped"

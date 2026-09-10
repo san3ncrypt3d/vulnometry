@@ -6,6 +6,48 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+### Added
+
+- `summary.severity_crosstab`: how each severity band was judged, on both axes — what the
+  scanner called it and what NVD's CVSS calls it — against the verdict. "You accepted 40
+  Critical findings" is the first challenge any report of this kind meets, so it is stated
+  rather than left to be discovered. `Assessment` now carries `scanner_severity`, the
+  scanner's own rating verbatim; it is kept for comparison and never used in the score.
+  Shown on the dashboard as three rankings of the same findings -- what the scanner called
+  Critical and High, what CVSS calls them, and what the model decided -- with a
+  plain-language summary, since the three routinely disagree.
+
+### Changed
+
+- Dashboard names the tool that produced the export rather than saying "the scanner".
+  `sniff_tabular_scanner()` recognises Snyk, Tenable Nessus, Qualys, Rapid7 InsightVM, Wiz,
+  Prisma Cloud, Trivy and Dependabot exports by the columns only that tool emits, and every
+  signature needs at least two of them so a stray "Plugin ID" in a hand-made spreadsheet
+  cannot make a report claim the data came from Nessus. Unrecognised exports still read
+  "Scanner". Purely cosmetic: nothing in the model branches on it.
+- Dashboard: dropped the "Highest exposure" findings table. It grew with the scan and on a
+  real run pushed the page past 40 KB while duplicating the workbook's Findings and Action
+  Plan sheets, which are the right place to read individual rows. The page is now a fixed
+  size regardless of scan volume.
+
+### Fixed
+
+- Dashboard escaped everything except the scanner name, which reaches the page from the
+  export and so could carry markup. Escaped, with a test that drives hostile strings through
+  the real path: asset name, owner, business unit, title and scanner name all sourced from
+  untrusted input.
+- `scanner_band()` bucketed values that `float()` accepts but CVSS does not. `nan` compares
+  False against every threshold and fell through to "None"; `inf` cleared the Critical
+  threshold; negatives were silently swallowed. Only a score between 0 and 10 becomes a
+  band now, so an odd value surfaces instead of being hidden, which is what the function
+  already claimed to do.
+- Tabular intake mapped `raw_severity` to the wrong column whenever an export carried both
+  a finding severity and an asset criticality. `criticality` was a severity alias and the
+  longest-alias-first tiebreak made it beat `severity`, so a Snyk export recorded
+  `PROJECT_CRITICALITY` — the project's business-criticality tag — as the finding's
+  severity. `criticality` is no longer a severity alias (asset criticality is modelled
+  separately as tier) and the common explicit spellings are matched first.
+
 ## [0.2.0] - 2026-09-10
 
 ### Added
