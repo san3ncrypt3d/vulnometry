@@ -174,27 +174,48 @@ def _hours_band(reduction: dict) -> str:
     return f"{low:,g}\u2013{high:,g}"
 
 
-def _crosstab(grid: dict, label: str) -> str:
-    """Severity band against verdict. Same visual language as the heat map."""
-    if not grid:
+def _rankings(cross: dict, counts: dict, focus=("Critical", "High")) -> str:
+    """The same findings ranked three ways: the scanner, CVSS, and this model.
+
+    Restricted to the bands that carry the argument -- nobody asks why a Medium
+    was accepted, they ask why a Critical was. Whatever falls below High is
+    totalled under 'other' rather than dropped, so the rows still reconcile.
+    """
+    by_scanner = cross.get("by_scanner_severity") or {}
+    by_cvss = cross.get("by_cvss_band") or {}
+    if not by_cvss:
         return ""
-    peak = max((n for row in grid.values() for n in row.values()), default=1) or 1
-    head = "".join(f"<th>{_e(v)}</th>" for v in VERDICT_ORDER)
-    body = []
-    for band, row in grid.items():
-        cells = []
-        for verdict in VERDICT_ORDER:
-            n = row.get(verdict, 0)
-            if n:
-                alpha = 0.18 + 0.82 * (n / peak)
-                cells.append(f'<td class="hc" style="background:{VERDICT_COLOUR[verdict]};'
-                             f'opacity:{alpha:.2f}"><span>{n}</span></td>')
-            else:
-                cells.append('<td class="hc empty"><span>&middot;</span></td>')
-        body.append(f'<tr><th class="rl">{_e(band)}</th>' + "".join(cells)
-                    + f'<td class="rt">{sum(row.values())}</td></tr>')
-    return (f'<table class="heat"><thead><tr><th class="rl">{_e(label)}</th>{head}'
-            f'<th class="rt">all</th></tr></thead><tbody>{"".join(body)}</tbody></table>')
+
+    def total(grid, band):
+        return sum(grid.get(band, {}).values())
+
+    def spare(grid):
+        return sum(sum(r.values()) for b, r in grid.items() if b not in focus)
+
+    sources = [("CVSS &mdash; NVD", by_cvss)]
+    if by_scanner:
+        sources.insert(0, ("Scanner said", by_scanner))
+    rows = []
+    for label, grid in sources:
+        cells = "".join(f'<td class="rt">{total(grid, b) or "&middot;"}</td>' for b in focus)
+        rows.append(f'<tr><th class="rl">{label}</th>{cells}'
+                    f'<td class="rt muted">{spare(grid) or "&middot;"}</td></tr>')
+
+    peak = max(counts.values()) or 1
+    verdicts = "".join(
+        (f'<td class="hc" style="background:{VERDICT_COLOUR[v]};'
+         f'opacity:{0.18 + 0.82 * (counts.get(v, 0) / peak):.2f}">'
+         f'<span>{counts.get(v, 0)}</span></td>') if counts.get(v)
+        else '<td class="hc empty"><span>&middot;</span></td>'
+        for v in VERDICT_ORDER)
+
+    head = "".join(f"<th>{_e(b)}</th>" for b in focus)
+    vhead = "".join(f"<th>{_e(v)}</th>" for v in VERDICT_ORDER)
+    return (f'<table class="heat"><thead><tr><th class="rl">ranked by</th>{head}'
+            f'<th class="rt">other</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
+            f'<table class="heat" style="margin-top:10px"><thead><tr>'
+            f'<th class="rl">this analysis</th>{vhead}</tr></thead><tbody>'
+            f'<tr><th class="rl">verdict</th>{verdicts}</tr></tbody></table>')
 
 
 def _group_key(item: Assessment) -> str:
@@ -281,34 +302,6 @@ def _funnel(reduction: dict, width: int = 460) -> str:
         f'role="img" aria-label="Reduction funnel">'
         f'<style>.fl{{font:12px system-ui,sans-serif;fill:#33475b}}</style>'
         + "".join(parts) + "</svg>"
-    )
-
-
-def _table(items: list[Assessment], limit: int = 40) -> str:
-    if not items:
-        return '<p class="muted">No findings.</p>'
-    rows = []
-    for item in items[:limit]:
-        colour = VERDICT_COLOUR.get(item.exposure.verdict, "#7f8c8d")
-        driver = ""
-        if item.exposure.threat_basis:
-            driver = item.exposure.threat_basis[0]
-        rows.append(
-            "<tr>"
-            f"<td><strong>{_e(item.cve_id)}</strong></td>"
-            f'<td class="bei">{item.exposure.index:g}</td>'
-            f'<td><span class="pill" style="background:{colour}">{_e(item.exposure.verdict)}</span></td>'
-            f"<td>{_e(item.asset or (('~' + item.scanner_ref()) if item.scanner_ref() else '-'))}</td>"
-            f"<td>{_e(item.owner or '-')}</td>"
-            f"<td>{_e(item.due_by or '-')}</td>"
-            f'<td class="muted">{_e(driver[:96])}</td>'
-            "</tr>"
-        )
-    return (
-        "<table><thead><tr><th>CVE</th><th>BEI</th><th>Verdict</th><th>Asset</th>"
-        "<th>Owner</th><th>Due</th><th>Primary driver</th></tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table>"
     )
 
 
@@ -425,11 +418,8 @@ def build_dashboard(
 </div>''' if reduction.get("findings_assessed") else ""}
 
 {f'''<div class="card">
-  <h2>How each severity band was judged</h2>
-  <div class="grid" style="margin-bottom:0">
-    <div>{_crosstab(by_scanner, "scanner said") if by_scanner else ""}</div>
-    <div>{_crosstab(by_cvss, "CVSS (NVD)")}</div>
-  </div>
+  <h2>Ranked three ways &mdash; the same findings</h2>
+  {_rankings(cross, counts)}
   <p class="muted">
   {(f"The scanner called <strong>{s_total}</strong> of these <strong>{_e(s_band)}</strong>; "
     f"NVD&rsquo;s CVSS calls <strong>{c_total}</strong> <strong>{_e(c_band)}</strong>; "
@@ -437,9 +427,9 @@ def build_dashboard(
     f"NVD&rsquo;s CVSS calls <strong>{c_total}</strong> <strong>{_e(c_band)}</strong>; ")}
   measuring exposure where you actually run them leaves
   <strong>{actionable_n}</strong> needing action and <strong>{accepted}</strong> accepted.
-  The two tables disagree because a scanner&rsquo;s own rating is not CVSS &mdash; neither is
-  wrong, and neither is a verdict. Accepted findings are recorded with their reasoning in the
-  workbook&rsquo;s Accepted sheet.</p>
+  The first two rows disagree because a scanner&rsquo;s own rating is not CVSS &mdash; neither
+  is wrong, and neither is a verdict. &lsquo;other&rsquo; is everything below High. Accepted
+  findings are recorded with their reasoning in the workbook&rsquo;s Accepted sheet.</p>
 </div>''' if by_cvss else ""}
 
 {f'''<div class="card">
@@ -459,12 +449,6 @@ def build_dashboard(
     <h2>Actionable load by owner</h2>
     {_bars([(k, float(v)) for k, v in by_owner.items()], colour="#c0392b")}
   </div>
-</div>
-
-<div class="card">
-  <h2>Highest exposure</h2>
-  {_table(items)}
-  {'<p class="muted">Showing the top 40 of ' + str(len(items)) + '.</p>' if len(items) > 40 else ''}
 </div>
 
 </main>

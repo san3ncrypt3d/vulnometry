@@ -13,8 +13,16 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
   Critical findings" is the first challenge any report of this kind meets, so it is stated
   rather than left to be discovered. `Assessment` now carries `scanner_severity`, the
   scanner's own rating verbatim; it is kept for comparison and never used in the score.
-  Shown on the dashboard as two crosstabs with a plain-language summary of the three
-  numbers, which routinely disagree.
+  Shown on the dashboard as three rankings of the same findings -- what the scanner called
+  Critical and High, what CVSS calls them, and what the model decided -- with a
+  plain-language summary, since the three routinely disagree.
+
+### Changed
+
+- Dashboard: dropped the "Highest exposure" findings table. It grew with the scan and on a
+  real run pushed the page past 40 KB while duplicating the workbook's Findings and Action
+  Plan sheets, which are the right place to read individual rows. The page is now a fixed
+  size regardless of scan volume.
 
 ### Fixed
 
