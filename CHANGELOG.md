@@ -6,8 +6,24 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-10
+
 ### Added
 
+- Every bulk report states how much the analysis narrowed the pile, under
+  `summary.reduction`: scanner findings, unique CVEs, CVE-by-asset decisions, how many a
+  severity-driven queue would call urgent (CVSS >= 7), how many are actionable, and finally
+  the distinct (asset, package) upgrades to perform, since one dependency bump closes every
+  CVE that package carries. `analysis_reduction_pct` is measured against the severity queue
+  rather than the row count, so scanner duplication is not counted as the tool's work.
+  Effort avoided is reported as a band with the per-finding triage assumption beside it
+  (`VULNOMETRY_TRIAGE_MINUTES_LOW` / `_HIGH`) and never feeds a score. Rendered as a tree in
+  the console, a numbered list in Markdown, a bar chart on the dashboard and a block in the
+  workbook's Method sheet.
+- Dashboard: a leadership view — a verdict KPI row that now includes **Accept**, each card
+  carrying a plain-language subtitle; a second row with the severity-queue reduction, the
+  upgrades left, the analyst hours avoided and what matched no asset; and a business-unit
+  (or owner, or asset) by verdict heat map ordered by total exposure.
 - Every assessment carries a one-sentence `rationale()`: what drove the verdict (the deciding
   factor and its evidence) plus the context it was judged in — internet exposure, tier, data
   class, EPSS score and its date, KEV status, confidence. `Assessment` now also keeps `tier`,
