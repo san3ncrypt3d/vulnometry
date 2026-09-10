@@ -7,6 +7,12 @@ rendering are all genuinely exercised. Only the socket is replaced.
 
 import asyncio
 
+import pytest
+
+
+async def _no_sleep(_seconds):
+    return None
+
 from vulnometry.assessment import assess_finding, assess_portfolio, portfolio_summary
 from vulnometry.feeds import advisories as adv
 from vulnometry.feeds import catalogue as kev
@@ -263,3 +269,87 @@ def test_partial_feed_failure_is_reported_not_fatal():
     assert result.exposure.threat == 1.0, "threat survives losing the CVE record"
     assert any("record" in gap.lower() or "nvd" in gap.lower() for gap in result.gaps)
     assert result.exposure.confidence in ("low", "medium")
+
+
+def test_system_trust_is_used_when_truststore_is_available(monkeypatch):
+    """Corporate TLS proxies re-sign traffic with a root the OS trusts and
+    certifi does not, so every feed fails on those networks. Verify through the
+    OS instead, unless the operator has said otherwise."""
+    import ssl
+
+    from vulnometry.net import _verification
+
+    for name in ("SSL_CERT_FILE", "SSL_CERT_DIR", "VULNOMETRY_SYSTEM_TRUST"):
+        monkeypatch.delenv(name, raising=False)
+    context = _verification()
+    assert isinstance(context, ssl.SSLContext)
+    assert type(context).__module__.startswith("truststore")
+
+    # an explicit bundle is a deliberate choice and wins
+    monkeypatch.setenv("SSL_CERT_FILE", "/tmp/some-bundle.pem")
+    assert _verification() is True
+    monkeypatch.delenv("SSL_CERT_FILE")
+
+    # and there is a way out if the OS store is the problem
+    monkeypatch.setenv("VULNOMETRY_SYSTEM_TRUST", "0")
+    assert _verification() is True
+
+
+def test_a_certificate_failure_fails_fast_with_an_explanation(monkeypatch):
+    """Retrying a rejected certificate four times cannot help, and the raw
+    OpenSSL text sends people hunting for a CA bundle to download."""
+    import asyncio
+
+    import httpx
+
+    import vulnometry.net as net
+    from vulnometry.config import reset_settings
+    from vulnometry.net import Client, FeedError
+
+    # the backoff is real seconds; shorten the loop rather than sitting through it
+    monkeypatch.setenv("VULNOMETRY_MAX_RETRIES", "2")
+    reset_settings()
+    monkeypatch.setattr(net.asyncio, "sleep", _no_sleep)
+
+    class Rejecting(httpx.AsyncClient):
+        attempts = 0
+
+        async def request(self, *args, **kwargs):
+            type(self).attempts += 1
+            raise httpx.ConnectError(
+                "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
+                "unable to get local issuer certificate"
+            )
+
+    client = Client()
+    client._client = Rejecting()
+
+    async def run():
+        return await client.request_json("GET", "https://www.cisa.gov/x", source="cisa-kev")
+
+    with pytest.raises(FeedError) as caught:
+        asyncio.run(run())
+
+    assert Rejecting.attempts == 1, "a bad certificate must not be retried"
+    message = str(caught.value)
+    assert "TLS-inspecting proxy" in message
+    assert "truststore" in message
+
+    # and the retry loop really is live, so the count above means the fast path
+    class Flaky(Rejecting):
+        attempts = 0
+
+        async def request(self, *args, **kwargs):
+            type(self).attempts += 1
+            raise httpx.ConnectError("connection reset by peer")
+
+    other = Client()
+    other._client = Flaky()
+
+    async def run_flaky():
+        return await other.request_json("GET", "https://www.cisa.gov/x", source="cisa-kev")
+
+    with pytest.raises(FeedError):
+        asyncio.run(run_flaky())
+    assert Flaky.attempts > 1, "ordinary transport errors are still retried"
+    reset_settings()

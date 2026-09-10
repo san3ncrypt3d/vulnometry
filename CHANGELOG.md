@@ -6,6 +6,21 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+### Fixed
+
+- Every feed failed with `CERTIFICATE_VERIFY_FAILED` on a corporate network. httpx verifies
+  against certifi, which does not know the private root that a TLS-inspecting proxy re-signs
+  traffic with, so `curl` succeeded where vulnometry could not reach anything. Verification now
+  goes through the operating system's own trust store via `truststore`, which is a dependency.
+  Python 3.13 made this worse by enabling `VERIFY_X509_STRICT`, which rejects enterprise roots
+  that omit the critical flag on `basicConstraints`; macOS and Windows tolerate those, so asking
+  the OS fixes both halves. An explicit `SSL_CERT_FILE` or `SSL_CERT_DIR` still wins, and
+  `VULNOMETRY_SYSTEM_TRUST=0` restores the old behaviour.
+- A rejected certificate was retried four times and then reported as a raw OpenSSL string, which
+  reads like a network fault and sends people looking for a CA bundle to download. It now fails
+  on the first attempt and names the likely cause, the one-command way to confirm it, and the fix.
+
+
 ## [0.3.0] - 2026-09-10
 
 ### Added

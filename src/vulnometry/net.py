@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import sqlite3
+import ssl
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -139,6 +141,59 @@ def cache() -> ResponseCache:
     return _cache
 
 
+def _verification() -> ssl.SSLContext | bool:
+    """Verify the way the operating system does, when it can.
+
+    httpx verifies against certifi, which knows nothing about the private root
+    a corporate TLS proxy re-signs traffic with. On such a network every feed
+    fails with CERTIFICATE_VERIFY_FAILED while curl, which asks the OS, works
+    fine. truststore asks the same evaluator the OS does, so the private root
+    is found and its quirks are tolerated: Python 3.13 turned on
+    VERIFY_X509_STRICT, and enterprise roots that omit the critical flag on
+    basicConstraints are common enough that a strict OpenSSL rejects them where
+    macOS and Windows do not.
+
+    Falls back to httpx's own default when truststore is absent, and honours
+    SSL_CERT_FILE when set, since someone pointing at a specific bundle means
+    it.
+    """
+    if os.environ.get("VULNOMETRY_SYSTEM_TRUST", "").lower() in ("0", "false", "no"):
+        return True
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
+        return True
+    try:
+        import truststore
+    except ImportError:
+        return True
+    return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+
+def _certificate_advice(exc: Exception) -> str:
+    """Name the cause, because the OpenSSL text does not.
+
+    Someone on a corporate network reads "unable to get local issuer
+    certificate" and goes looking for a CA bundle to download. The cause is
+    almost always a TLS proxy whose root the OS trusts and certifi does not.
+    """
+    try:
+        import truststore  # noqa: F401
+    except ImportError:
+        fix = "run `pip install truststore` and try again"
+    else:
+        fix = (
+            "truststore is installed but not in use here; unset SSL_CERT_FILE and "
+            "SSL_CERT_DIR, and leave VULNOMETRY_SYSTEM_TRUST unset, so the operating "
+            "system's trust store is consulted"
+        )
+    return (
+        f"TLS certificate verification failed ({exc}). This host is almost certainly "
+        f"behind a TLS-inspecting proxy whose root certificate your operating system "
+        f"trusts but Python does not. To confirm, run "
+        f"`curl -sSI https://www.cisa.gov`, which asks the OS: if that succeeds while "
+        f"this fails, it is the trust store and not the network. Fix: {fix}."
+    )
+
+
 @dataclass
 class Client:
     _client: httpx.AsyncClient | None = None
@@ -150,6 +205,7 @@ class Client:
                 timeout=httpx.Timeout(cfg.timeout),
                 headers={"User-Agent": cfg.user_agent, "Accept": "application/json"},
                 follow_redirects=True,
+                verify=_verification(),
             )
         return self._client
 
@@ -193,6 +249,10 @@ class Client:
                     method, url, params=params, json=json_body, headers=dict(headers or {})
                 )
             except httpx.HTTPError as exc:
+                if "CERTIFICATE_VERIFY_FAILED" in str(exc):
+                    # Retrying cannot help, and the raw OpenSSL text sends people
+                    # hunting for a CA bundle when the answer is one install.
+                    raise FeedError(source, _certificate_advice(exc)) from exc
                 last_error = f"transport error: {exc}"
                 await asyncio.sleep(min(2**attempt, 8))
                 continue
