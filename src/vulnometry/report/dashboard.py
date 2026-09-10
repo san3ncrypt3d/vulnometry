@@ -123,7 +123,18 @@ main { padding:24px 32px 56px; max-width:1240px; margin:0 auto; }
 .kpi { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
 .kpi .n { font-size:28px; font-weight:700; color:var(--ink); line-height:1.1; }
 .kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.7px; color:var(--muted); margin-top:5px; }
+.kpi .s { font-size:11px; color:var(--muted); margin-top:3px; opacity:.85; }
 .kpi.alert .n { color:#c0392b; }
+.kpi.good .n { color:#1e7a4c; }
+table.heat { border-collapse:separate; border-spacing:3px; width:100%; }
+table.heat th { padding:6px 8px; border:none; }
+table.heat th.rl { text-align:left; font-size:11px; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:600; white-space:nowrap; max-width:230px; overflow:hidden; text-overflow:ellipsis; }
+table.heat td { border:none; padding:0; }
+td.hc { border-radius:5px; text-align:center; height:30px; min-width:52px; }
+td.hc span { color:#fff; font-weight:700; font-size:12px; font-variant-numeric:tabular-nums; }
+td.hc.empty { background:#f2f5f7; }
+td.hc.empty span { color:#c3ccd3; font-weight:400; }
+td.rt { text-align:right; padding-right:6px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; font-size:12px; }
 table { width:100%; border-collapse:collapse; font-size:13px; }
 th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); padding:8px 10px; border-bottom:2px solid var(--line); white-space:nowrap; }
 td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
@@ -141,8 +152,113 @@ code { background:#eef2f5; padding:1px 5px; border-radius:4px; font-size:12px; }
 """
 
 
-def _kpi(value, label: str, alert: bool = False) -> str:
-    return f'<div class="kpi{" alert" if alert else ""}"><div class="n">{_e(value)}</div><div class="l">{_e(label)}</div></div>'
+def _kpi(value, label: str, alert: bool = False, note: str = "", tone: str = "") -> str:
+    classes = "kpi" + (" alert" if alert else "") + (f" {tone}" if tone else "")
+    sub = f'<div class="s">{_e(note)}</div>' if note else ""
+    return (f'<div class="{classes}"><div class="n">{_e(value)}</div>'
+            f'<div class="l">{_e(label)}</div>{sub}</div>')
+
+
+def _mins(reduction: dict) -> str:
+    low, high = (reduction.get("triage_minutes_assumed") or [30, 120])[:2]
+    def h(m):
+        return f"{m / 60:g} h" if m >= 60 else f"{m:g} min"
+    return f"{h(low)}\u2013{h(high)}"
+
+
+def _hours_band(reduction: dict) -> str:
+    low = reduction.get("analyst_hours_saved_low", 0)
+    high = reduction.get("analyst_hours_saved_high", 0)
+    if not high:
+        return "0"
+    return f"{low:,g}\u2013{high:,g}"
+
+
+def _group_key(item: Assessment) -> str:
+    return item.business_unit or item.owner or item.asset or item.scanner_ref() or "unattributed"
+
+
+def _heatmap(items: list[Assessment], limit: int = 14) -> tuple[str, str]:
+    """Where the work sits: one row per business unit (or owner), one column per verdict.
+
+    Returns (html, dimension-label) so the card can say what it grouped by.
+    """
+    if not items:
+        return "", ""
+    dimension = ("business unit" if any(i.business_unit for i in items)
+                 else "owner" if any(i.owner for i in items)
+                 else "asset")
+
+    grid: dict[str, dict[str, int]] = {}
+    weight: dict[str, float] = {}
+    for item in items:
+        key = _group_key(item)
+        row = grid.setdefault(key, dict.fromkeys(VERDICT_ORDER, 0))
+        row[item.exposure.verdict] = row.get(item.exposure.verdict, 0) + 1
+        weight[key] = weight.get(key, 0.0) + item.exposure.index
+
+    ordered = sorted(grid, key=lambda k: -weight[k])
+    hidden = max(0, len(ordered) - limit)
+    ordered = ordered[:limit]
+    peak = max((n for row in grid.values() for n in row.values()), default=1) or 1
+
+    head = "".join(f"<th>{_e(v)}</th>" for v in VERDICT_ORDER)
+    body = []
+    for key in ordered:
+        cells = []
+        for verdict in VERDICT_ORDER:
+            n = grid[key][verdict]
+            if n:
+                # opacity carries the magnitude, hue carries the verdict
+                alpha = 0.18 + 0.82 * (n / peak)
+                cells.append(f'<td class="hc" style="background:{VERDICT_COLOUR[verdict]};'
+                             f'opacity:{alpha:.2f}"><span>{n}</span></td>')
+            else:
+                cells.append('<td class="hc empty"><span>&middot;</span></td>')
+        total = sum(grid[key].values())
+        body.append(f'<tr><th class="rl" title="{_e(key)}">{_e(key[:38])}</th>'
+                    + "".join(cells) + f'<td class="rt">{total}</td></tr>')
+
+    more = (f'<p class="muted">Showing the {limit} groups carrying the most exposure; '
+            f'{hidden} more not shown.</p>') if hidden else ""
+    return (
+        f'<table class="heat"><thead><tr><th class="rl">{_e(dimension)}</th>{head}'
+        f'<th class="rt">all</th></tr></thead><tbody>{"".join(body)}</tbody></table>{more}',
+        dimension,
+    )
+
+
+def _funnel(reduction: dict, width: int = 460) -> str:
+    """Horizontal bars, widest first: scanner rows in, upgrades out."""
+    if not reduction or not reduction.get("findings_assessed"):
+        return ""
+    floor = reduction.get("severity_floor", 7.0)
+    # One unit only. unique_cves and cve_asset_pairs count CVEs and pairs, not
+    # findings, so putting them in this chain draws a funnel that can widen.
+    # They are still reported in the console funnel and in summary.reduction.
+    stages = [
+        ("Scanner findings", reduction["findings_assessed"], "#1f3a53"),
+        (f"Urgent on CVSS alone (≥ {floor:g})", reduction["urgent_on_severity_alone"], "#36688d"),
+        ("Actionable after analysis", reduction["actionable_findings"], "#c0392b"),
+        ("Upgrades to perform", reduction["actionable_work_items"], "#7d2018"),
+    ]
+    top = max(v for _, v, _ in stages) or 1
+    row_h, gap = 26, 6
+    parts = []
+    for i, (label, value, colour) in enumerate(stages):
+        w = max(2, round(width * value / top))
+        y = i * (row_h + gap)
+        parts.append(
+            f'<rect x="0" y="{y}" width="{w}" height="{row_h}" rx="3" fill="{colour}"></rect>'
+            f'<text x="{w + 8}" y="{y + row_h - 8}" class="fl">{value:,} &middot; {_e(label)}</text>'
+        )
+    height = len(stages) * (row_h + gap)
+    return (
+        f'<svg viewBox="0 0 {width + 190} {height}" width="100%" height="{height}" '
+        f'role="img" aria-label="Reduction funnel">'
+        f'<style>.fl{{font:12px system-ui,sans-serif;fill:#33475b}}</style>'
+        + "".join(parts) + "</svg>"
+    )
 
 
 def _table(items: list[Assessment], limit: int = 40) -> str:
@@ -191,8 +307,10 @@ def build_dashboard(
     confirmed = len(summary.get("confirmed_exploited") or [])
     suppressed = summary.get("suppressed_by_context", 0)
     unattributed = summary.get("unattributed", 0)
+    reduction = summary.get("reduction") or {}
 
     overdue = sum(1 for i in items if i.due_by and i.due_by < date.today().isoformat())
+    heat, heat_dimension = _heatmap(items)
 
     legend = "".join(
         f'<span><i class="dot" style="background:{VERDICT_COLOUR[v]}"></i>{v} ({counts.get(v, 0)})</span>'
@@ -211,12 +329,32 @@ def build_dashboard(
 <main>
 
 <div class="kpis">
-  {_kpi(counts.get("Contain", 0), "contain now", alert=counts.get("Contain", 0) > 0)}
-  {_kpi(counts.get("Remediate", 0), "remediate this sprint")}
-  {_kpi(counts.get("Schedule", 0), "next window")}
-  {_kpi(confirmed, "confirmed exploited", alert=confirmed > 0)}
-  {_kpi(overdue, "past due date", alert=overdue > 0)}
-  {_kpi(suppressed, "suppressed by context")}
+  {_kpi(counts.get("Contain", 0), "contain now", alert=counts.get("Contain", 0) > 0,
+        note="outside the change process")}
+  {_kpi(counts.get("Remediate", 0), "remediate this sprint", note="ahead of the routine cycle")}
+  {_kpi(counts.get("Schedule", 0), "schedule", note="next maintenance window")}
+  {_kpi(counts.get("Accept", 0), "accept", note="below the action threshold", tone="good")}
+  {_kpi(confirmed, "confirmed exploited", alert=confirmed > 0, note="listed in CISA KEV")}
+  {_kpi(overdue, "past due date", alert=overdue > 0, note="against your own SLA")}
+</div>
+
+<div class="kpis">
+  {_kpi(f'{reduction.get("analysis_reduction_pct", 0)}%', "of the severity queue removed",
+        tone="good",
+        note=f'{reduction.get("urgent_on_severity_alone", 0):,} urgent on CVSS → '
+             f'{reduction.get("actionable_findings", 0):,} actionable')
+   if reduction else ""}
+  {_kpi(reduction.get("actionable_work_items", 0), "upgrades to perform",
+        note=f'across {reduction.get("actionable_work_assets", 0):,} '
+             f'{"asset" if reduction.get("actionable_work_assets") == 1 else "assets"}; '
+             f'one bump clears every CVE in that package') if reduction else ""}
+  {_kpi(_hours_band(reduction), "analyst hours avoided", tone="good",
+        note=f'{reduction.get("findings_not_triaged", 0):,} findings never hand-triaged, '
+             f'at {_mins(reduction)} each')
+   if reduction else ""}
+  {_kpi(unattributed, "unmatched to an asset", alert=unattributed > 0,
+        note="scored pessimistically")}
+  {_kpi(suppressed, "suppressed by context", note="not deployed or unreachable")}
 </div>
 
 <div class="grid">
@@ -232,6 +370,31 @@ def build_dashboard(
     that a severity-only view would have ranked identically.</p>
   </div>
 </div>
+
+{f'''<div class="card">
+  <h2>What the analysis removed</h2>
+  {_funnel(reduction)}
+  <p class="muted">A severity-driven queue would call
+  <strong>{reduction.get("urgent_on_severity_alone", 0):,}</strong> of these urgent
+  (CVSS &ge; {reduction.get("severity_floor", 7.0):g}). Measuring exposure where you actually run
+  them leaves <strong>{reduction.get("actionable_findings", 0):,}</strong> &mdash;
+  <strong>{reduction.get("analysis_reduction_pct", 0)}% of that queue removed</strong>, and what
+  is left is {reduction.get("actionable_work_items", 0):,} package
+  {"upgrade" if reduction.get("actionable_work_items") == 1 else "upgrades"}, because one bump
+  closes every CVE that package carries. Separately, and not counted as analysis, those
+  {reduction.get("findings_assessed", 0):,} rows describe
+  {reduction.get("unique_cves", 0):,} distinct CVEs across
+  {reduction.get("cve_asset_pairs", 0):,} CVE&nbsp;&times;&nbsp;asset decisions: a scanner emits one
+  row per (CVE, project, manifest), which inflates the count before anyone judges anything.</p>
+</div>''' if reduction.get("findings_assessed") else ""}
+
+{f'''<div class="card">
+  <h2>Where the work sits &mdash; {_e(heat_dimension)} &times; verdict</h2>
+  {heat}
+  <p class="muted">Colour is the verdict, depth is the count. Rows are ordered by total exposure,
+  so the top row is where attention buys the most. A row that is wide on the right and empty on
+  the left is carrying volume, not risk.</p>
+</div>''' if heat else ""}
 
 <div class="grid">
   <div class="card">

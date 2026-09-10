@@ -148,6 +148,53 @@ def render_table(items: list[Assessment], out: Console | None = None, limit: int
         out.print(f"[dim]...and {len(items) - limit} more. Use --format json or --workbook for the full set.[/]")
 
 
+def reduction_lines(reduction: dict) -> list[str]:
+    """The funnel, as plain lines: scanner rows in, decisions and upgrades out."""
+    if not reduction or not reduction.get("findings_assessed"):
+        return []
+    r = reduction
+
+    def plural(n: int, one: str, many: str) -> str:
+        return f"{n} {one if n == 1 else many}"
+
+    lines = [
+        plural(r["findings_assessed"], "scanner finding", "scanner findings"),
+        plural(r["unique_cves"], "unique CVE", "unique CVEs"),
+        f"{plural(r['cve_asset_pairs'], 'CVE x asset decision', 'CVE x asset decisions')}"
+        f"  ({r['deduplication_pct']}% scanner duplication removed)",
+        f"{r['urgent_on_severity_alone']} would be urgent on CVSS alone "
+        f"(>= {r['severity_floor']:g})",
+        f"{plural(r['actionable_findings'], 'actionable finding', 'actionable findings')} "
+        f"after exposure analysis  ({r['analysis_reduction_pct']}% of the severity queue removed)",
+        f"{plural(r['actionable_work_items'], 'upgrade', 'upgrades')} to actually perform"
+        f"  (across {plural(r.get('actionable_work_assets', 0), 'asset', 'assets')})",
+    ]
+    if r.get("collapsed_by_business_context"):
+        lines.insert(4, f"{r['collapsed_by_business_context']} collapsed to nil by business context "
+                        "(not deployed, or unreachable)")
+    low, high = (r.get("triage_minutes_assumed") or [0, 0])[:2]
+    if r.get("findings_not_triaged") and high:
+        def h(m: float) -> str:
+            return f"{m / 60:g}h" if m >= 60 else f"{m:g}min"
+        lines.append(
+            f"~{r['analyst_hours_saved_low']:,g}-{r['analyst_hours_saved_high']:,g} analyst hours "
+            f"not spent  ({r['findings_not_triaged']} never hand-triaged, at {h(low)}-{h(high)} each)"
+        )
+    return lines
+
+
+def render_reduction(summary: dict, out: Console | None = None) -> None:
+    out = out or console()
+    lines = reduction_lines((summary or {}).get("reduction") or {})
+    if not lines:
+        return
+    out.print("\n[bold]What the analysis removed[/]")
+    for depth, line in enumerate(lines):
+        marker = "└─" if depth == len(lines) - 1 else "├─"
+        style = "bold" if depth == len(lines) - 1 else ""
+        out.print(f"  {marker} [{style}]{line}[/]" if style else f"  {marker} {line}")
+
+
 def to_json(items: list[Assessment], summary: dict | None = None) -> str:
     payload: dict | list
     if summary is not None:
@@ -175,6 +222,10 @@ def to_markdown(items: list[Assessment], summary: dict | None = None) -> str:
                 f"{summary['suppressed_by_context']} finding(s) were reduced to negligible exposure "
                 "by business context: the affected component is not deployed or not reachable."
             )
+        funnel = reduction_lines(summary.get("reduction") or {})
+        if funnel:
+            lines += ["", "## What the analysis removed", ""]
+            lines += [f"{n}. {line}" for n, line in enumerate(funnel, start=1)]
         lines.append("")
 
     lines += [

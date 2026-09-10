@@ -15,7 +15,16 @@ from . import __version__
 from .assessment import assess_portfolio, portfolio_summary
 from .config import settings
 from .inventory import TEMPLATE, AssetProfile, Inventory
-from .report import build_dashboard, build_workbook, render_one, render_table, to_csv, to_json, to_markdown
+from .report import (
+    build_dashboard,
+    build_workbook,
+    render_one,
+    render_reduction,
+    render_table,
+    to_csv,
+    to_json,
+    to_markdown,
+)
 from .schema import harvest_cve_ids
 
 OUT = Console()
@@ -122,6 +131,7 @@ def _emit(results, summary, args) -> None:
 def _print_summary(summary: dict) -> None:
     if not summary:
         return
+    render_reduction(summary, OUT)
     contain = summary.get("contain_now") or []
     if contain:
         OUT.print(f"\n[bold red]Contain now:[/] {', '.join(contain[:12])}")

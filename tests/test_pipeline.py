@@ -173,6 +173,53 @@ def test_portfolio_summary_attributes_work():
     assert summary["exposure_by_business_unit"]["Commerce"] > 0
 
 
+def test_reduction_funnel_counts_upgrades_not_rows():
+    """One package on one asset is one upgrade, however many CVEs it carries."""
+    async def run():
+        await prime_all()
+        return await assess_portfolio([
+            # same package, same asset, two CVEs -> one upgrade
+            {"cve": "CVE-2021-44228", "asset": "checkout-api",
+             "component": "org.apache.logging.log4j:log4j-core: 2.14.1"},
+            {"cve": "CVE-2023-40000", "asset": "checkout-api",
+             "component": "org.apache.logging.log4j:log4j-core: 2.14.1"},
+            # same CVE, different asset -> a separate pair and a separate upgrade
+            {"cve": "CVE-2021-44228", "asset": "internal-wiki",
+             "component": "org.apache.logging.log4j:log4j-core: 2.14.1"},
+        ], inventory=INVENTORY, lens="signal")
+
+    results = asyncio.run(run())
+    r = portfolio_summary(results)["reduction"]
+
+    assert r["findings_assessed"] == 3
+    assert r["unique_cves"] == 2
+    assert r["cve_asset_pairs"] == 3
+    # two assets x one package = two upgrades, from three findings
+    assert r["work_items"] == 2
+    assert r["findings_per_work_item"] == 1.5
+    assert r["actionable_work_items"] <= r["work_items"]
+    assert 0 <= r["effort_reduction_pct"] <= 100
+
+    # the headline reduction is measured against the severity queue, not the row
+    # count: a severity-driven programme would chase everything CVSS rates High+
+    assert r["urgent_on_severity_alone"] >= r["actionable_findings"]
+    assert r["analysis_reduction_pct"] == round(
+        100 * (1 - r["actionable_findings"] / r["urgent_on_severity_alone"])
+    )
+
+
+def test_package_strips_the_version_however_it_is_written():
+    from vulnometry.assessment import _package
+
+    assert _package("org.apache.tomcat.embed:tomcat-embed-core: 11.0.9") == \
+        "org.apache.tomcat.embed:tomcat-embed-core"
+    assert _package("io.netty:netty-handler:4.1.100.Final") == "io.netty:netty-handler"
+    assert _package("lodash@4.17.20") == "lodash"
+    assert _package("requests 2.25.1") == "requests"
+    assert _package("no-version-here") == "no-version-here"
+    assert _package("") == ""
+
+
 def test_nvd_falls_back_to_the_cve_program():
     async def run():
         await prime([

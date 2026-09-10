@@ -268,13 +268,60 @@ still actionable: every report keeps the name the scanner gave it — a Scanner 
 workbook, and a `~name` fallback everywhere else — so you always know which project or host to
 go and look at.
 
+## What the analysis removed
+
+Every bulk report ends with a funnel:
+
+```
+What the analysis removed
+  ├─ 4000 scanner findings
+  ├─ 500 unique CVEs
+  ├─ 1600 CVE x asset decisions  (60% scanner duplication removed)
+  ├─ 1400 would be urgent on CVSS alone (>= 7)
+  ├─ 40 actionable findings after exposure analysis  (97% of the severity queue removed)
+  └─ 12 upgrades to actually perform
+```
+
+There are two different reductions in there and it matters which one you quote.
+
+**Scanner duplication is bookkeeping, not analysis.** A scanner reports one row per (CVE,
+project, manifest), so the row count is inflated before anyone has judged anything. Collapsing
+it is arithmetic. Claiming credit for it would be dishonest.
+
+**The reduction that is the analysis is measured against the counterfactual** — how many of
+these a severity-driven programme would have queued as urgent, versus how many the exposure
+model says to act on. That is the claim the tool has to stand behind, so `analysis_reduction_pct`
+is a percentage of the *severity queue*, never of the raw row count.
+
+**The last line is the cost.** One dependency bump closes every CVE that package carries, so
+distinct (asset, package) upgrades is what the work actually is. A plan built on upgrades is a
+plan somebody can finish.
+
+| Key | What it counts |
+|---|---|
+| `findings_assessed` | Rows measured, after de-duplicating identical (CVE, asset, host, component) |
+| `unique_cves` | Distinct vulnerabilities, however many places they appear |
+| `cve_asset_pairs` | Distinct risk decisions: one CVE, in one place you run it |
+| `urgent_on_severity_alone` | CVSS base >= 7.0 — the severity-driven baseline |
+| `actionable_findings` | Contain + Remediate |
+| `collapsed_by_business_context` | Reduced to nil by `deployed: false` or an unreachable vector |
+| `work_items` / `actionable_work_items` | Distinct (asset, package) — **the unit an engineer works in** |
+| `deduplication_pct` | Scanner duplication removed, off the row count |
+| `analysis_reduction_pct` | **Severity queue removed by the exposure model** |
+| `effort_reduction_pct` | Upgrades versus findings |
+
+It appears in the console after the table, in `--format json` and `--format markdown` under
+`summary.reduction`, as a funnel chart on the dashboard, and in the workbook's Method sheet.
+`vulnometry.assessment.reduction_funnel(assessments)` returns it directly if you are using the
+library.
+
 ## Dashboard
 
 ```bash
 vulnometry import export.xlsx --dashboard exposure.html
 ```
 
-[![The vulnometry exposure dashboard: a KPI strip, a verdict donut, exposure by business unit, actionable load by owner, and a reachability-versus-consequence scatter](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard.png)](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard-full.png)
+[![The vulnometry exposure dashboard: two KPI rows covering the four verdicts and the leadership numbers, a business-unit-by-verdict heat map, the reduction funnel, a verdict donut, exposure by business unit, actionable load by owner, and a reachability-versus-consequence scatter](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard.png)](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard-full.png)
 
 *Click through for the full page, including the ranked findings table. The file itself is
 [`examples/exposure.html`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples/exposure.html) — download it and open it in a browser
@@ -284,10 +331,39 @@ One self-contained HTML file. No server, no CDN, no build step and no JavaScript
 charts are inline SVG generated in Python. It opens from `file://` and works air-gapped, which
 matters when the person who needs the summary is not the person with a terminal.
 
-It shows a KPI strip, a verdict donut, exposure by business unit, actionable load by owner, and
-a reachability-versus-consequence scatter with bubble size set by threat. Findings in the
+**Two KPI rows.** The first is the four verdicts — contain now, remediate this sprint, schedule,
+accept — plus confirmed-exploited and past-due counts, each with a one-line subtitle so a reader
+who has never seen the tool knows what the word means. The second is the leadership view: what
+percentage of the severity queue the analysis removed, how many upgrades that leaves, the
+analyst hours that were never spent, and how much of the scan matched no asset.
+
+**Where the work sits.** A heat map of business unit (or owner, or asset — whichever your
+inventory populates) against verdict. Colour is the verdict, depth is the count, and rows are
+ordered by total exposure, so the top row is where attention buys the most. A row that is wide
+on the right and empty on the left is carrying volume, not risk.
+
+**What the analysis removed.** The funnel described above, as a bar chart.
+
+Then a verdict donut, exposure by business unit, actionable load by owner, and a
+reachability-versus-consequence scatter with bubble size set by threat. Findings in the
 top-right corner are the ones to work on; the cluster on the left edge is what a severity-only
 view would have ranked identically.
+
+### Analyst hours avoided
+
+The hours KPI is an **assumption, not a measurement**, and the dashboard says so on the face of
+the card:
+
+```
+findings_not_triaged x triage_minutes / 60
+```
+
+`findings_not_triaged` is the severity queue less what the model says to act on. Triaging one
+finding by hand — read the CVE, work out where it runs, judge whether it matters here, write it
+up or close it — takes anywhere from half an hour to two, so the result is reported as a **band**
+rather than a false-precision single number, with the per-finding assumption printed beside it.
+Set your own with `VULNOMETRY_TRIAGE_MINUTES_LOW` and `VULNOMETRY_TRIAGE_MINUTES_HIGH`. It never
+feeds a score.
 
 That example is real output, not a mock-up. Reproduce it in one command:
 
