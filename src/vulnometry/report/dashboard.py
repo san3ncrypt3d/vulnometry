@@ -140,6 +140,7 @@ td.hc span { color:#fff; font-weight:700; font-size:12px; font-variant-numeric:t
 td.hc.empty { background:#f2f5f7; }
 td.hc.empty span { color:#c3ccd3; font-weight:400; }
 td.rt { text-align:right; padding-right:6px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; font-size:12px; }
+table.heat th.rt { text-align:right; padding-right:6px; }
 table { width:100%; border-collapse:collapse; font-size:13px; }
 th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); padding:8px 10px; border-bottom:2px solid var(--line); white-space:nowrap; }
 td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
@@ -216,7 +217,7 @@ def _rankings(cross: dict, counts: dict, focus=("Critical", "High")) -> str:
         else '<td class="hc empty"><span>&middot;</span></td>'
         for v in VERDICT_ORDER)
 
-    head = "".join(f"<th>{_e(b)}</th>" for b in focus)
+    head = "".join(f'<th class="rt">{_e(b)}</th>' for b in focus)
     vhead = "".join(f"<th>{_e(v)}</th>" for v in VERDICT_ORDER)
     return (f'<table class="heat"><thead><tr><th class="rl">ranked by</th>{head}'
             f'<th class="rt">other</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
