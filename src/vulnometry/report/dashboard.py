@@ -201,7 +201,7 @@ def _rankings(cross: dict, counts: dict, focus=("Critical", "High")) -> str:
     if by_scanner:
         # Name the tool when the export identified it; a reader recognises
         # "Snyk" and has to decode "the scanner".
-        sources.insert(0, (cross.get("scanner_name") or "Scanner", by_scanner))
+        sources.insert(0, (_e(cross.get("scanner_name") or "Scanner"), by_scanner))
     rows = []
     for label, grid in sources:
         cells = "".join(f'<td class="rt">{total(grid, b) or "&middot;"}</td>' for b in focus)

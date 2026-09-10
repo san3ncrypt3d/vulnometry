@@ -244,9 +244,15 @@ def scanner_band(raw: str) -> str:
     if lowered in aliases:
         return aliases[lowered]
     try:
-        return cvss_band(float(text))
+        score = float(text)
     except ValueError:
         return text.title()
+    # Only a plausible CVSS score becomes a band. nan parses and compares False
+    # against everything, inf clears the Critical threshold, and a negative is
+    # nonsense -- each would be silently bucketed rather than surfaced.
+    if 0.0 <= score <= 10.0:
+        return cvss_band(score)
+    return text.title()
 
 
 def severity_crosstab(assessments: list[Assessment]) -> dict:

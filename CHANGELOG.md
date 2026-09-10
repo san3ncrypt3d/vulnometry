@@ -32,6 +32,15 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ### Fixed
 
+- Dashboard escaped everything except the scanner name, which reaches the page from the
+  export and so could carry markup. Escaped, with a test that drives hostile strings through
+  the real path: asset name, owner, business unit, title and scanner name all sourced from
+  untrusted input.
+- `scanner_band()` bucketed values that `float()` accepts but CVSS does not. `nan` compares
+  False against every threshold and fell through to "None"; `inf` cleared the Critical
+  threshold; negatives were silently swallowed. Only a score between 0 and 10 becomes a
+  band now, so an odd value surfaces instead of being hidden, which is what the function
+  already claimed to do.
 - Tabular intake mapped `raw_severity` to the wrong column whenever an export carried both
   a finding severity and an asset criticality. `criticality` was a severity alias and the
   longest-alias-first tiebreak made it beat `severity`, so a Snyk export recorded

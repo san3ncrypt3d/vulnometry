@@ -194,3 +194,52 @@ def test_scanner_severity_reaches_the_assessment_and_the_crosstab():
     assert cvss_band(4.0) == "Medium"
     assert cvss_band(0.1) == "Low"
     assert cvss_band(0) == "None"
+
+
+def test_severity_bands_only_accept_a_plausible_score():
+    """A scanner emitting nan, inf or a negative must surface, not be bucketed.
+
+    float() parses all three. nan compares False against every threshold and so
+    fell through to "None"; inf cleared the Critical threshold. Both contradict
+    the promise that an unrecognised value is shown rather than hidden.
+    """
+    from vulnometry.assessment import scanner_band
+
+    assert scanner_band("nan") == "Nan"
+    assert scanner_band("inf") == "Inf"
+    assert scanner_band("-3") == "-3"
+    assert scanner_band("11") == "11"
+    assert scanner_band("9.8") == "Critical"
+    assert scanner_band("10") == "Critical"
+    assert scanner_band("0") == "None"
+
+
+def test_dashboard_escapes_everything_that_came_from_data(tmp_path):
+    """Asset names, owners and the scanner name reach the page from the inventory
+    and the export, so none of them may be interpolated raw."""
+    import asyncio
+
+    from vulnometry.assessment import assess_portfolio, portfolio_summary
+    from vulnometry.inventory import Inventory
+    from vulnometry.report.dashboard import build_dashboard
+
+    hostile = '<script>alert("xss")</script>'
+    inventory = Inventory.from_dict({"assets": [{
+        "name": hostile, "tier": 1, "owner": hostile, "business_unit": hostile,
+        "internet_exposed": True, "aliases": ["evil-proj"],
+    }]})
+
+    async def run():
+        return await assess_portfolio(
+            [{"cve": "CVE-2021-44228", "asset": "evil-proj",
+              "raw_severity": hostile, "scanner": hostile}],
+            inventory=inventory, lens="signal")
+
+    results = asyncio.run(run())
+    summary = portfolio_summary(results)
+    page = tmp_path / "dash.html"
+    build_dashboard(results, page, summary, title=hostile)
+    html = page.read_text()
+
+    assert "<script>alert" not in html, "data reached the page unescaped"
+    assert "&lt;script&gt;" in html, "the hostile string should still be visible, escaped"
