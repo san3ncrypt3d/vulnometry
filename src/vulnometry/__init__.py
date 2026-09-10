@@ -1,6 +1,6 @@
 """Score CVEs by what they are worth to your business, not by severity alone."""
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"  # keep in step with pyproject.toml; test_surfaces.py enforces it
 
 from .assessment import assess_finding, assess_portfolio
 from .exposure import measure_exposure

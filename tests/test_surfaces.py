@@ -283,3 +283,20 @@ def test_text_formats_render():
     csv_text = to_csv(items)
     assert csv_text.splitlines()[0].startswith("cve,bei,verdict")
     assert "CVE-2021-44228,928.9,Contain" in csv_text
+
+
+def test_the_package_version_matches_pyproject():
+    """__version__ reaches users through `vulnometry --version`, the MCP
+    serverInfo handshake and the OpenAPI document, and it is a second copy of a
+    number that lives in pyproject.toml. The 0.2.0 release bumped one and not
+    the other, so every one of those three reported 0.1.0.
+    """
+    import re
+    from pathlib import Path
+
+    import vulnometry
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    declared = re.search(r'^version = "([^"]+)"', pyproject.read_text(), re.M)
+    assert declared, "pyproject.toml has no top-level version"
+    assert vulnometry.__version__ == declared.group(1)
