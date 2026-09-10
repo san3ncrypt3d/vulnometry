@@ -149,3 +149,48 @@ def test_plain_text_fallback(tmp_path):
     path.write_text("Please patch CVE-2021-44228 and cve-2023-40000 before Friday.")
     findings, label = load_findings(path)
     assert {f["cve"] for f in findings} == {"CVE-2021-44228", "CVE-2023-40000"}
+
+
+def test_severity_column_is_the_findings_own_not_the_assets():
+    """Regression: a Snyk export has ISSUE_SEVERITY and PROJECT_CRITICALITY.
+
+    'criticality' used to be a raw_severity alias, and the longest-alias-first
+    tiebreak made it beat 'severity', so every Snyk import silently recorded the
+    project's business-criticality tag as the finding's severity.
+    """
+    from vulnometry.intake.tabular import _map_columns
+
+    snyk = ["ISSUE_SEVERITY_RANK", "ISSUE_SEVERITY", "CVE", "PROJECT_NAME",
+            "PROJECT_CRITICALITY", "PROJECT_ENVIRONMENT", "PACKAGE_NAME_AND_VERSION"]
+    mapping = _map_columns(snyk)
+    assert snyk[mapping["raw_severity"]] == "ISSUE_SEVERITY"
+
+    # and where only an asset-criticality column exists, severity stays unmapped
+    # rather than being filled with the wrong thing
+    assert "raw_severity" not in _map_columns(["CVE", "Asset", "Criticality"])
+
+    # the common spellings still resolve
+    for headers, expected in (
+        (["CVE", "Severity"], "Severity"),
+        (["CVE", "Risk"], "Risk"),
+        (["CVE", "Severity Level", "Criticality"], "Severity Level"),
+        (["CVE", "CVSS Severity"], "CVSS Severity"),
+    ):
+        assert headers[_map_columns(headers)["raw_severity"]] == expected
+
+
+def test_scanner_severity_reaches_the_assessment_and_the_crosstab():
+    from vulnometry.assessment import cvss_band, scanner_band
+
+    assert scanner_band("CRITICAL") == "Critical"
+    assert scanner_band("moderate") == "Medium"      # Red Hat / GHSA spelling
+    assert scanner_band("Important") == "High"       # Red Hat spelling
+    assert scanner_band("9.8") == "Critical"         # numeric scanners
+    assert scanner_band("") == ""
+    assert scanner_band("Bizarre") == "Bizarre"      # surfaced, not forced into a band
+
+    assert cvss_band(9.8) == "Critical"
+    assert cvss_band(7.0) == "High"
+    assert cvss_band(4.0) == "Medium"
+    assert cvss_band(0.1) == "Low"
+    assert cvss_band(0) == "None"

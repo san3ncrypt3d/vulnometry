@@ -65,6 +65,7 @@ async def assess_finding(
     host: str = "",
     component: str = "",
     lens: str = "full",
+    scanner_severity: str = "",
 ) -> Assessment:
     """Assess one CVE against one place you run it."""
     cve_id = canonical_cve(cve_id)
@@ -127,6 +128,7 @@ async def assess_finding(
         data_classification=asset.data_classification,
         due_by=due_by,
         sla_days=asset.sla_days(measure.verdict) or None,
+        scanner_severity=scanner_severity,
         source_asset=asset_name,
         source_host=host,
         source_component=component,
@@ -175,6 +177,7 @@ async def assess_portfolio(
                 host=row.get("host", ""),
                 component=row.get("component", ""),
                 lens=lens,
+                scanner_severity=str(row.get("raw_severity") or "").strip(),
             )
 
     results = await asyncio.gather(*(one(row) for row in normalised))
@@ -202,6 +205,77 @@ def _work_item(item: Assessment) -> tuple[str, str]:
 
 
 SEVERITY_URGENT_FLOOR = 7.0   # CVSS High. What a severity-driven queue treats as urgent.
+
+SEVERITY_BANDS = ("Critical", "High", "Medium", "Low")
+
+
+def cvss_band(score: float) -> str:
+    """CVSS v3 qualitative bands. 'None' when nothing was published."""
+    if score >= 9.0:
+        return "Critical"
+    if score >= 7.0:
+        return "High"
+    if score >= 4.0:
+        return "Medium"
+    if score > 0:
+        return "Low"
+    return "None"
+
+
+def scanner_band(raw: str) -> str:
+    """Normalise whatever the scanner called it onto the same four bands.
+
+    Scanners spell it differently -- CRITICAL, critical, Moderate, Important --
+    and some emit a number. Anything unrecognised is returned title-cased rather
+    than forced into a band, so a surprise shows up instead of being hidden.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    aliases = {"critical": "Critical", "high": "High", "important": "High",
+               "medium": "Medium", "moderate": "Medium", "low": "Low",
+               "minor": "Low", "negligible": "Low", "info": "Low",
+               "informational": "Low"}
+    if lowered in aliases:
+        return aliases[lowered]
+    try:
+        return cvss_band(float(text))
+    except ValueError:
+        return text.title()
+
+
+def severity_crosstab(assessments: list[Assessment]) -> dict:
+    """How each severity band was judged -- the question everyone asks first.
+
+    'You accepted 27 Critical findings' is the challenge any report of this kind
+    has to answer, so it is stated rather than left to be discovered. Reported on
+    both axes because they disagree: the scanner's own rating is what a reader
+    has already seen, CVSS is the independent public number, and neither is the
+    verdict.
+    """
+    by_scanner: dict[str, dict[str, int]] = {}
+    by_cvss: dict[str, dict[str, int]] = {}
+    for item in assessments:
+        verdict = item.exposure.verdict
+        s = scanner_band(item.scanner_severity)
+        if s:
+            by_scanner.setdefault(s, {}).setdefault(verdict, 0)
+            by_scanner[s][verdict] += 1
+        c = cvss_band(_cvss(item))
+        by_cvss.setdefault(c, {}).setdefault(verdict, 0)
+        by_cvss[c][verdict] += 1
+
+    def order(grid):
+        keys = [b for b in SEVERITY_BANDS if b in grid]
+        keys += sorted(k for k in grid if k not in SEVERITY_BANDS)
+        return {k: grid[k] for k in keys}
+
+    return {
+        "by_scanner_severity": order(by_scanner),
+        "by_cvss_band": order(by_cvss),
+        "scanner_severity_available": bool(by_scanner),
+    }
 
 
 def _cvss(item: Assessment) -> float:
@@ -301,6 +375,7 @@ def portfolio_summary(assessments: list[Assessment],
         "assessed": len(assessments),
         "by_verdict": by_verdict,
         "reduction": reduction_funnel(assessments, triage_minutes),
+        "severity_crosstab": severity_crosstab(assessments),
         "contain_now": [a.cve_id for a in assessments if a.exposure.verdict == "Contain"][:50],
         "actionable": len(actionable),
         "deferrable": len(assessments) - len(actionable),

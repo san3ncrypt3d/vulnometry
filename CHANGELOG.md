@@ -6,6 +6,25 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+### Added
+
+- `summary.severity_crosstab`: how each severity band was judged, on both axes — what the
+  scanner called it and what NVD's CVSS calls it — against the verdict. "You accepted 40
+  Critical findings" is the first challenge any report of this kind meets, so it is stated
+  rather than left to be discovered. `Assessment` now carries `scanner_severity`, the
+  scanner's own rating verbatim; it is kept for comparison and never used in the score.
+  Shown on the dashboard as two crosstabs with a plain-language summary of the three
+  numbers, which routinely disagree.
+
+### Fixed
+
+- Tabular intake mapped `raw_severity` to the wrong column whenever an export carried both
+  a finding severity and an asset criticality. `criticality` was a severity alias and the
+  longest-alias-first tiebreak made it beat `severity`, so a Snyk export recorded
+  `PROJECT_CRITICALITY` — the project's business-criticality tag — as the finding's
+  severity. `criticality` is no longer a severity alias (asset criticality is modelled
+  separately as tier) and the common explicit spellings are matched first.
+
 ## [0.2.0] - 2026-09-10
 
 ### Added

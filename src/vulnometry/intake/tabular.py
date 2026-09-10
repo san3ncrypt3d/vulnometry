@@ -28,8 +28,14 @@ COLUMN_ALIASES = {
     "version": [
         "version", "installedversion", "packageversion", "currentversion", "pkgversion",
     ],
+    # The finding's own severity. Deliberately NOT "criticality": every scanner
+    # uses that for the *asset* (Snyk's PROJECT_CRITICALITY is exactly that), and
+    # asset criticality is modelled separately as tier. Matching it here silently
+    # populated severity with a business-criticality tag.
     "raw_severity": [
-        "severity", "risk", "riskfactor", "criticality", "priority", "rating", "cvssseverity",
+        "issueseverity", "vulnerabilityseverity", "vulnseverity", "findingseverity",
+        "severitylevel", "cvssseverity", "severity", "riskfactor", "risk", "priority",
+        "rating",
     ],
     "owner": ["owner", "assignee", "team", "responsible", "contact", "custodian"],
     "business_unit": ["businessunit", "bu", "department", "division", "org", "group"],

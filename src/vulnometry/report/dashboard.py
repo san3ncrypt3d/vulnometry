@@ -174,6 +174,29 @@ def _hours_band(reduction: dict) -> str:
     return f"{low:,g}\u2013{high:,g}"
 
 
+def _crosstab(grid: dict, label: str) -> str:
+    """Severity band against verdict. Same visual language as the heat map."""
+    if not grid:
+        return ""
+    peak = max((n for row in grid.values() for n in row.values()), default=1) or 1
+    head = "".join(f"<th>{_e(v)}</th>" for v in VERDICT_ORDER)
+    body = []
+    for band, row in grid.items():
+        cells = []
+        for verdict in VERDICT_ORDER:
+            n = row.get(verdict, 0)
+            if n:
+                alpha = 0.18 + 0.82 * (n / peak)
+                cells.append(f'<td class="hc" style="background:{VERDICT_COLOUR[verdict]};'
+                             f'opacity:{alpha:.2f}"><span>{n}</span></td>')
+            else:
+                cells.append('<td class="hc empty"><span>&middot;</span></td>')
+        body.append(f'<tr><th class="rl">{_e(band)}</th>' + "".join(cells)
+                    + f'<td class="rt">{sum(row.values())}</td></tr>')
+    return (f'<table class="heat"><thead><tr><th class="rl">{_e(label)}</th>{head}'
+            f'<th class="rt">all</th></tr></thead><tbody>{"".join(body)}</tbody></table>')
+
+
 def _group_key(item: Assessment) -> str:
     return item.business_unit or item.owner or item.asset or item.scanner_ref() or "unattributed"
 
@@ -311,6 +334,19 @@ def build_dashboard(
 
     overdue = sum(1 for i in items if i.due_by and i.due_by < date.today().isoformat())
     heat, heat_dimension = _heatmap(items)
+    cross = summary.get("severity_crosstab") or {}
+    by_scanner = cross.get("by_scanner_severity") or {}
+    by_cvss = cross.get("by_cvss_band") or {}
+
+    def _worst(grid):
+        for b in ("Critical", "High"):
+            if b in grid:
+                return b, sum(grid[b].values()), grid[b].get("Accept", 0)
+        return "", 0, 0
+    s_band, s_total, _ = _worst(by_scanner)
+    c_band, c_total, _ = _worst(by_cvss)
+    accepted = counts.get("Accept", 0)
+    actionable_n = counts.get("Contain", 0) + counts.get("Remediate", 0)
 
     legend = "".join(
         f'<span><i class="dot" style="background:{VERDICT_COLOUR[v]}"></i>{v} ({counts.get(v, 0)})</span>'
@@ -387,6 +423,24 @@ def build_dashboard(
   {reduction.get("cve_asset_pairs", 0):,} CVE&nbsp;&times;&nbsp;asset decisions: a scanner emits one
   row per (CVE, project, manifest), which inflates the count before anyone judges anything.</p>
 </div>''' if reduction.get("findings_assessed") else ""}
+
+{f'''<div class="card">
+  <h2>How each severity band was judged</h2>
+  <div class="grid" style="margin-bottom:0">
+    <div>{_crosstab(by_scanner, "scanner said") if by_scanner else ""}</div>
+    <div>{_crosstab(by_cvss, "CVSS (NVD)")}</div>
+  </div>
+  <p class="muted">
+  {(f"The scanner called <strong>{s_total}</strong> of these <strong>{_e(s_band)}</strong>; "
+    f"NVD&rsquo;s CVSS calls <strong>{c_total}</strong> <strong>{_e(c_band)}</strong>; "
+    if by_scanner and s_band else
+    f"NVD&rsquo;s CVSS calls <strong>{c_total}</strong> <strong>{_e(c_band)}</strong>; ")}
+  measuring exposure where you actually run them leaves
+  <strong>{actionable_n}</strong> needing action and <strong>{accepted}</strong> accepted.
+  The two tables disagree because a scanner&rsquo;s own rating is not CVSS &mdash; neither is
+  wrong, and neither is a verdict. Accepted findings are recorded with their reasoning in the
+  workbook&rsquo;s Accepted sheet.</p>
+</div>''' if by_cvss else ""}
 
 {f'''<div class="card">
   <h2>Where the work sits &mdash; {_e(heat_dimension)} &times; verdict</h2>
