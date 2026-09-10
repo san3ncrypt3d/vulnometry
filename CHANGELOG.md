@@ -17,7 +17,10 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
   Python 3.13 made this worse by enabling `VERIFY_X509_STRICT`, which rejects enterprise roots
   that omit the critical flag on `basicConstraints`; macOS and Windows tolerate those, so asking
   the OS fixes both halves. An explicit `SSL_CERT_FILE` or `SSL_CERT_DIR` still wins, and
-  `VULNOMETRY_SYSTEM_TRUST=0` restores the old behaviour.
+  `VULNOMETRY_SYSTEM_TRUST=0` restores the old behaviour. `SSL_CERT_FILE` and
+  `SSL_CERT_DIR` are added to the system store rather than swapped for it, because a
+  corporate image commonly sets them to the company bundle, and treating that as
+  "use this instead" reintroduces the failure on exactly the machines this fixes.
 - A rejected certificate was retried four times and then reported as a raw OpenSSL string, which
   reads like a network fault and sends people looking for a CA bundle to download. It now fails
   on the first attempt and names the likely cause, the one-command way to confirm it, and the fix.

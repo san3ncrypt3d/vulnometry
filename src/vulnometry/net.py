@@ -153,19 +153,33 @@ def _verification() -> ssl.SSLContext | bool:
     basicConstraints are common enough that a strict OpenSSL rejects them where
     macOS and Windows do not.
 
-    Falls back to httpx's own default when truststore is absent, and honours
-    SSL_CERT_FILE when set, since someone pointing at a specific bundle means
-    it.
+    SSL_CERT_FILE and SSL_CERT_DIR are added to the OS store rather than
+    swapped for it. A corporate image often sets those to the company bundle,
+    and treating that as "use this instead" is how a machine that was working
+    starts failing: the bundle is verified by OpenSSL, and OpenSSL is the strict
+    one. Adding it keeps a deliberately named private CA working without giving
+    up the system roots.
+
+    Falls back to httpx's own default when truststore is absent.
     """
     if os.environ.get("VULNOMETRY_SYSTEM_TRUST", "").lower() in ("0", "false", "no"):
-        return True
-    if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
         return True
     try:
         import truststore
     except ImportError:
         return True
-    return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    cafile = os.environ.get("SSL_CERT_FILE") or None
+    capath = os.environ.get("SSL_CERT_DIR") or None
+    if cafile or capath:
+        try:
+            context.load_verify_locations(cafile=cafile, capath=capath)
+        except OSError as exc:
+            raise FeedError(
+                "tls", f"SSL_CERT_FILE or SSL_CERT_DIR could not be read: {exc}"
+            ) from exc
+    return context
 
 
 def _certificate_advice(exc: Exception) -> str:

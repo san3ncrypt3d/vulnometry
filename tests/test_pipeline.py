@@ -9,6 +9,27 @@ import asyncio
 
 import pytest
 
+_SELF_SIGNED_PEM = """\n-----BEGIN CERTIFICATE-----
+MIIDGzCCAgOgAwIBAgIUEeR/dAhRrqt36vrmrWKK/h+USeMwDQYJKoZIhvcNAQEL
+BQAwHTEbMBkGA1UEAwwSdnVsbm9tZXRyeSB0ZXN0IENBMB4XDTI2MDkxMDE1MzA0
+NFoXDTM2MDkwNzE1MzA0NFowHTEbMBkGA1UEAwwSdnVsbm9tZXRyeSB0ZXN0IENB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxoaOkJvz6LyOv0cmGjDf
+xzvfFBaFbsGWNLMvr2+RtseSDz4UUKnQEdxEiU6z+W7AVNFS55hi6rED9JBNtSsE
+2bOVjrBp7qslW+zW/5W901Nu+vwxLs97w4D4zqUkAMCC3dqNvzChZquUPzfPQ76h
+cpmj6uc6oXQ8b0BAXLYbfR4Uimt39Dm7oEP3RllmXdd2NAdSSwV1vBECZmhjACmE
+13XOrHBZFF+wNUOI3ZCjDXda98x7/NeMqyUol3BkkFreP/4y5zLZRbdBsxss/MZV
+pgrP1bYa/P0RDFP3pe2jxByKcExPBJlMKQgp5pBeRVsn9E/Q0p712VO22YwQmgUH
+HwIDAQABo1MwUTAdBgNVHQ4EFgQUQ6c/Gd6pZsvtJYvonflG2pyXhMswHwYDVR0j
+BBgwFoAUQ6c/Gd6pZsvtJYvonflG2pyXhMswDwYDVR0TAQH/BAUwAwEB/zANBgkq
+hkiG9w0BAQsFAAOCAQEAEjZGOzpgcXNGIWzUownOjvUiLhS5dk64jcxV9zzrDbDI
+V5RYH2QHuDhhI7wWkOZiMErGTk3Mjv2ZF42prGBxHYSKdIl5ZabPnzJovB7P74Jo
+HyuJ/Hw4fkM+HwHQNzBFE65MAYdpA7GflK5aqlM6pFIbMXi8c4hRoewbcvpyryyI
+DTNfG3kSK06F7RMShtAJUOXLHdvYxTPK77Z8bmVfnElxl5mMZqvRFLl3k0yhK1Jo
+C4uElx3+HIn0O8A+se6KNeGZW3Pn8VQnr2huaeoSelN4juyc27c+qsbnTPsFM37a
+Ag/novqp0ZFCavEBc2iKtY+1ZsLR6oYQk/rYM7KwLg==
+-----END CERTIFICATE-----
+"""
+
 
 async def _no_sleep(_seconds):
     return None
@@ -271,13 +292,13 @@ def test_partial_feed_failure_is_reported_not_fatal():
     assert result.exposure.confidence in ("low", "medium")
 
 
-def test_system_trust_is_used_when_truststore_is_available(monkeypatch):
+def test_system_trust_is_used_when_truststore_is_available(monkeypatch, tmp_path):
     """Corporate TLS proxies re-sign traffic with a root the OS trusts and
     certifi does not, so every feed fails on those networks. Verify through the
     OS instead, unless the operator has said otherwise."""
     import ssl
 
-    from vulnometry.net import _verification
+    from vulnometry.net import FeedError, _verification
 
     for name in ("SSL_CERT_FILE", "SSL_CERT_DIR", "VULNOMETRY_SYSTEM_TRUST"):
         monkeypatch.delenv(name, raising=False)
@@ -285,9 +306,21 @@ def test_system_trust_is_used_when_truststore_is_available(monkeypatch):
     assert isinstance(context, ssl.SSLContext)
     assert type(context).__module__.startswith("truststore")
 
-    # an explicit bundle is a deliberate choice and wins
-    monkeypatch.setenv("SSL_CERT_FILE", "/tmp/some-bundle.pem")
-    assert _verification() is True
+    # a named bundle is ADDED to the OS store, not swapped for it: a corporate
+    # image that sets SSL_CERT_FILE must not lose the system roots, or the very
+    # machines this exists for start failing again
+    bundle = tmp_path / "extra.pem"
+    bundle.write_text(_SELF_SIGNED_PEM)
+    monkeypatch.setenv("SSL_CERT_FILE", str(bundle))
+    layered = _verification()
+    assert isinstance(layered, ssl.SSLContext)
+    assert type(layered).__module__.startswith("truststore")
+    monkeypatch.delenv("SSL_CERT_FILE")
+
+    # an unreadable bundle is a configuration error worth surfacing
+    monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "does-not-exist.pem"))
+    with pytest.raises(FeedError, match="could not be read"):
+        _verification()
     monkeypatch.delenv("SSL_CERT_FILE")
 
     # and there is a way out if the OS store is the problem
