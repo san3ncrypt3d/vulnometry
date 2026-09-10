@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 
+from .config import settings
 from .exposure import directive_for, measure_exposure
 from .feeds import advisories as adv_feed
 from .feeds import catalogue as kev_feed
@@ -179,7 +181,105 @@ async def assess_portfolio(
     return sorted(results, key=lambda a: a.exposure.index, reverse=True)
 
 
-def portfolio_summary(assessments: list[Assessment]) -> dict:
+_VERSION_TAIL = re.compile(r"(?::\s*|@|\s+)v?\d[^\s]*$")
+
+
+def _package(component: str) -> str:
+    """'org.apache.tomcat.embed:tomcat-embed-core: 11.0.9' -> the package, without the version.
+
+    One package on one asset is one upgrade, however many CVEs it carries.
+    """
+    text = (component or "").strip()
+    if not text:
+        return ""
+    return _VERSION_TAIL.sub("", text).strip(" :@")
+
+
+def _work_item(item: Assessment) -> tuple[str, str]:
+    """The unit an engineer actually actions: one package, on one place you run it."""
+    where = item.asset or item.scanner_ref() or "(unmatched)"
+    return (where, _package(item.source_component) or item.cve_id)
+
+
+SEVERITY_URGENT_FLOOR = 7.0   # CVSS High. What a severity-driven queue treats as urgent.
+
+
+def _cvss(item: Assessment) -> float:
+    severity = item.weakness.primary_severity()
+    return (severity.base_score or 0.0) if severity else 0.0
+
+
+def reduction_funnel(assessments: list[Assessment],
+                     triage_minutes: tuple[float, float] | None = None) -> dict:
+    """How much the analysis narrowed the pile, stage by stage.
+
+    Two separate reductions, and it matters which one you quote.
+
+    Scanners report one row per (CVE, project, manifest), so the row count is
+    inflated by duplication before anyone has judged anything. Removing that is
+    bookkeeping, not analysis.
+
+    The reduction that *is* the analysis is against the counterfactual: how many
+    of these a severity-driven programme would have queued as urgent (CVSS >= 7)
+    versus how many the exposure model says to act on. That is the claim the tool
+    has to stand behind, so it is reported against the severity queue, not
+    against the raw row count.
+
+    Last comes cost: one dependency bump closes every CVE that package carries,
+    so distinct (asset, package) upgrades is what the work actually is.
+
+    ``triage_minutes`` bounds the effort avoided. Triaging one finding by hand --
+    read the CVE, work out where it runs, judge whether it matters here, write it
+    up or close it -- runs anywhere from half an hour to two, so the answer is
+    reported as a band with the assumption beside it. It is an assumption, not a
+    measurement, and it never feeds a score.
+    """
+    cfg = settings()
+    low, high = triage_minutes or (cfg.triage_minutes_low, cfg.triage_minutes_high)
+    total = len(assessments)
+    pairs = {(a.cve_id, a.asset or a.scanner_ref()) for a in assessments}
+    urgent_on_severity = [a for a in assessments if _cvss(a) >= SEVERITY_URGENT_FLOOR]
+    actionable = [a for a in assessments if a.exposure.verdict in ("Contain", "Remediate")]
+    collapsed = [a for a in assessments if a.exposure.collapsed_by]
+
+    work = {_work_item(a) for a in assessments}
+    actionable_work = {_work_item(a) for a in actionable}
+
+    def cut(part: int, whole: int) -> int:
+        return round(100 * (1 - part / whole)) if whole else 0
+
+    return {
+        "findings_assessed": total,
+        "unique_cves": len({a.cve_id for a in assessments}),
+        "cve_asset_pairs": len(pairs),
+        "urgent_on_severity_alone": len(urgent_on_severity),
+        "actionable_findings": len(actionable),
+        "collapsed_by_business_context": len(collapsed),
+        "work_items": len(work),
+        "actionable_work_items": len(actionable_work),
+        "actionable_work_assets": len({where for where, _ in actionable_work}),
+        "findings_per_work_item": round(total / len(work), 1) if work else 0.0,
+        # bookkeeping: duplication the scanner introduced
+        "deduplication_pct": cut(len(pairs), total),
+        # the analysis: how much of the severity-driven queue the model removed
+        "analysis_reduction_pct": cut(len(actionable), len(urgent_on_severity)),
+        # cost: upgrades vs findings
+        "effort_reduction_pct": cut(len(actionable_work), total),
+        "severity_floor": SEVERITY_URGENT_FLOOR,
+        # effort avoided: a band, because per-finding triage time genuinely varies
+        "findings_not_triaged": max(0, len(urgent_on_severity) - len(actionable)),
+        "triage_minutes_assumed": [round(low, 1), round(high, 1)],
+        "analyst_hours_saved_low": round(
+            max(0, len(urgent_on_severity) - len(actionable)) * low / 60, 1
+        ),
+        "analyst_hours_saved_high": round(
+            max(0, len(urgent_on_severity) - len(actionable)) * high / 60, 1
+        ),
+    }
+
+
+def portfolio_summary(assessments: list[Assessment],
+                      triage_minutes: tuple[float, float] | None = None) -> dict:
     """Summary paragraph for the top of a report."""
     by_verdict: dict[str, int] = {}
     by_owner: dict[str, int] = {}
@@ -200,6 +300,7 @@ def portfolio_summary(assessments: list[Assessment]) -> dict:
     return {
         "assessed": len(assessments),
         "by_verdict": by_verdict,
+        "reduction": reduction_funnel(assessments, triage_minutes),
         "contain_now": [a.cve_id for a in assessments if a.exposure.verdict == "Contain"][:50],
         "actionable": len(actionable),
         "deferrable": len(assessments) - len(actionable),

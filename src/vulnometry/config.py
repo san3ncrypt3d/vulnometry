@@ -54,6 +54,13 @@ class Settings:
 
     inventory_path: str | None = None
 
+    # Minutes a human spends triaging one finding by hand: read the CVE, find
+    # where it runs, judge whether it matters, write it up or close it. Reported
+    # as a band because it genuinely varies that much. Only ever used to put a
+    # figure on effort avoided; never feeds a score.
+    triage_minutes_low: float = 30.0
+    triage_minutes_high: float = 120.0
+
     default_model: str | None = None
     ollama_host: str = "http://localhost:11434"
     openai_api_key: str | None = None
@@ -86,6 +93,8 @@ class Settings:
             cache_enabled=not _flag("VULNOMETRY_NO_CACHE", False),
             history_enabled=not _flag("VULNOMETRY_NO_HISTORY", False),
             inventory_path=_env("VULNOMETRY_INVENTORY"),
+            triage_minutes_low=_num("VULNOMETRY_TRIAGE_MINUTES_LOW", 30.0),
+            triage_minutes_high=_num("VULNOMETRY_TRIAGE_MINUTES_HIGH", 120.0),
             default_model=_env("VULNOMETRY_MODEL"),
             ollama_host=(_env("OLLAMA_HOST") or "http://localhost:11434").rstrip("/"),
             openai_api_key=_env("OPENAI_API_KEY"),

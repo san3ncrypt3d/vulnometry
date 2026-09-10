@@ -311,6 +311,37 @@ def _method_sheet(workbook: Workbook, items: list[Assessment], summary: dict | N
                                 f"{summary['suppressed_by_context']} suppressed by business context · "
                                 f"{summary['unattributed']} not matched to a known asset"),
         ]
+        reduction = summary.get("reduction") or {}
+        if reduction.get("findings_assessed"):
+            r = reduction
+            rows += [
+                ("", ""),
+                ("What the analysis removed",
+                 "Two separate reductions. Scanner duplication is bookkeeping: one row per "
+                 "(CVE, project, manifest) inflates the count before anyone judges anything. The "
+                 "reduction that is the analysis is measured against the counterfactual - how many "
+                 f"a severity-driven queue would call urgent (CVSS >= {r['severity_floor']:g}) versus "
+                 "how many this model says to act on."),
+                ("  Scanner findings in", r["findings_assessed"]),
+                ("  Unique CVEs", r["unique_cves"]),
+                ("  CVE x asset decisions",
+                 f"{r['cve_asset_pairs']}  ({r['deduplication_pct']}% scanner duplication removed)"),
+                (f"  Urgent on CVSS alone (>= {r['severity_floor']:g})", r["urgent_on_severity_alone"]),
+                ("  Actionable after exposure analysis",
+                 f"{r['actionable_findings']}  ({r['analysis_reduction_pct']}% of the severity queue removed)"),
+                ("  Collapsed to nil by business context", r["collapsed_by_business_context"]),
+                ("  Upgrades to perform",
+                 f"{r['actionable_work_items']} across {r['actionable_work_assets']} asset(s). "
+                 "One upgrade is one package on one asset; bumping it clears every CVE that "
+                 "package carries there."),
+                ("  Findings per upgrade", r["findings_per_work_item"]),
+                ("  Analyst hours not spent",
+                 f"~{r['analyst_hours_saved_low']:,g}-{r['analyst_hours_saved_high']:,g}  "
+                 f"({r['findings_not_triaged']} findings never hand-triaged, at "
+                 f"{r['triage_minutes_assumed'][0]:g}-{r['triage_minutes_assumed'][1]:g} minutes each). "
+                 "An assumption, not a measurement: set VULNOMETRY_TRIAGE_MINUTES_LOW / _HIGH to "
+                 "your own figures."),
+            ]
 
     sheet.cell(row=1, column=1, value="How these numbers were produced").font = TITLE_FONT
     for offset, (label, text) in enumerate(rows, start=3):

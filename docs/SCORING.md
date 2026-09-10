@@ -176,6 +176,84 @@ loses findings, which is the more expensive mistake.
 the CVE record, EPSS score and asset context are all present, `low` when two or
 more are missing. Treat a low-confidence number as provisional.
 
+## Counting the work, not the rows
+
+The score answers "how bad is this here". A separate question — the one that
+decides whether anyone acts on the report — is "how much is there to do".
+
+`reduction_funnel()` in `src/vulnometry/assessment.py` answers it, and every bulk
+report carries the result under `summary.reduction`. The stages narrow, in order:
+
+| Key | Counts |
+|---|---|
+| `findings_assessed` | rows measured (already de-duplicated on CVE + asset + host + component) |
+| `unique_cves` | distinct CVE ids |
+| `cve_asset_pairs` | distinct (CVE, asset) — one risk decision each |
+| `urgent_on_severity_alone` | CVSS base >= `SEVERITY_URGENT_FLOOR` (7.0) |
+| `actionable_findings` | verdict Contain or Remediate |
+| `collapsed_by_business_context` | exposure reduced to nil by `deployed: false` or an unreachable attack vector |
+| `work_items` | distinct (asset, package) across everything |
+| `actionable_work_items` | distinct (asset, package) among the actionable |
+
+plus `findings_per_work_item` and three percentages.
+
+**The percentages are not interchangeable, and only one of them is the tool's
+claim.** `deduplication_pct` is bookkeeping: a scanner emits one row per (CVE,
+project, manifest), so the row count is inflated before anyone judges anything,
+and collapsing it is arithmetic rather than insight. `effort_reduction_pct` is
+cost accounting. The number that says what the analysis was *worth* is
+`analysis_reduction_pct`, and it is deliberately computed against
+`urgent_on_severity_alone` rather than against the row count:
+
+```
+analysis_reduction_pct = 1 - actionable_findings / urgent_on_severity_alone
+```
+
+That is the counterfactual a reader actually cares about — *of the things a
+CVSS-driven queue would have put in front of an engineer, how many did measuring
+exposure take back off*. Dividing by the raw row count instead would quietly fold
+scanner duplication into the tool's credit and inflate the claim, which is
+exactly the sort of number that gets a report disbelieved the first time somebody
+checks it.
+
+The unit of work is **one package, on one place you run it**, because that is
+what an engineer actually does: a single version bump closes every CVE that
+package carries. `_package()` derives it from the component string the scanner
+gave, stripping the version however it was written
+(`org.apache.tomcat.embed:tomcat-embed-core: 11.0.9`, `lodash@4.17.20`,
+`requests 2.25.1`). When a finding carries no component the CVE stands in as its
+own work item, so the count is never optimistic.
+
+Two honest caveats. The funnel counts *distinct upgrades*, not effort: bumping a
+framework major version is not the same size of job as a patch release, and
+nothing here knows the difference. And a package that appears on twenty assets
+counts as twenty upgrades, which is right if they ship independently and
+pessimistic if they share a build.
+
+### Analyst hours avoided
+
+```
+findings_not_triaged x triage_minutes / 60
+```
+
+where `findings_not_triaged` is `urgent_on_severity_alone - actionable_findings`
+— the findings a severity-driven queue would have put in front of a human that
+this one does not.
+
+`triage_minutes` is an **assumption, not a measurement**. Triaging one finding by
+hand — read the CVE, work out where it runs, judge whether it matters here, write
+it up or close it — runs from about half an hour to two, and which end you land
+on depends on how good your inventory is and how senior the analyst is. So the
+result is reported as a band (`analyst_hours_saved_low` /
+`analyst_hours_saved_high`) with `triage_minutes_assumed` printed next to it,
+rather than as a single number carrying precision nobody has earned. Set
+`VULNOMETRY_TRIAGE_MINUTES_LOW` and `VULNOMETRY_TRIAGE_MINUTES_HIGH` to your own
+figures.
+
+It never feeds a score, and it is deliberately the last number in the report
+rather than the first: it is a consequence of the analysis being right, not
+evidence that it is.
+
 ## Versioning
 
 `MODEL_VERSION` in `src/vulnometry/exposure.py` is stamped into every measurement.

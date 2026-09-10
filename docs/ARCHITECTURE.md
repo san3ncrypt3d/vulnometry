@@ -69,11 +69,19 @@ CVE ids on stdin┘                        │
                                          v
               feeds (concurrent) ─> assessment ─> exposure ─> Assessment
               NVD EPSS KEV OSV GHSA          │
-                                             v
+                                             ├─> portfolio_summary()
+                                             │     └─ reduction_funnel()
+                                             v      rows in -> upgrades out
                               console │ workbook │ dashboard │ json
 ```
 
 ## Design decisions worth knowing
+
+**The report states its own reduction.** `reduction_funnel()` counts scanner rows,
+unique CVEs, CVE×asset decisions and — last — distinct (asset, package) upgrades,
+because that is the unit an engineer works in. A tool that hands security a
+five-figure finding count and engineering an unordered list is how the two ends
+up arguing about different numbers. See `docs/SCORING.md`.
 
 **Feed failures are isolated, never fatal.** Each feed is fetched inside a guard
 that records the problem in `Assessment.gaps` and returns an empty value. A dead
