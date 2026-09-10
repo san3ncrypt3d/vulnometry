@@ -58,5 +58,7 @@ do not recognise, that is a one-line contribution.
 
 1. Update `CHANGELOG.md`.
 2. Bump the version in `pyproject.toml` and `src/vulnometry/__init__.py`.
-3. Tag: `git tag -a v0.2.0 -m "v0.2.0" && git push --tags`.
+3. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push --tags`. Pushing the tag is what
+   publishes to PyPI, via trusted publishing in `.github/workflows/release.yml`. The
+   workflow refuses a tag that does not match the version in `pyproject.toml`.
 4. Create the GitHub release and paste the matching `CHANGELOG.md` section as the notes.

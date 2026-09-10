@@ -321,9 +321,9 @@ library.
 vulnometry import export.xlsx --dashboard exposure.html
 ```
 
-[![The vulnometry exposure dashboard: two KPI rows covering the four verdicts and the leadership numbers, a business-unit-by-verdict heat map, the reduction funnel, a verdict donut, exposure by business unit, actionable load by owner, and a reachability-versus-consequence scatter](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard.png)](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard-full.png)
+[![The vulnometry exposure dashboard: two KPI rows covering the four verdicts and the leadership numbers, a verdict donut, a reachability-versus-consequence scatter, the reduction funnel, the same findings ranked three ways, a business-unit-by-verdict heat map, exposure by business unit, and actionable load by owner](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard.png)](https://raw.githubusercontent.com/san3ncrypt3d/vulnometry/main/docs/img/dashboard-full.png)
 
-*Click through for the full page, including the ranked findings table. The file itself is
+*Click through for the full page, including the three-way severity rankings and the heat map. The file itself is
 [`examples/exposure.html`](https://github.com/san3ncrypt3d/vulnometry/blob/main/examples/exposure.html) — download it and open it in a browser
 for the hover detail on every bubble.*
 
@@ -343,6 +343,24 @@ ordered by total exposure, so the top row is where attention buys the most. A ro
 on the right and empty on the left is carrying volume, not risk.
 
 **What the analysis removed.** The funnel described above, as a bar chart.
+
+**The same findings, ranked three ways.** "You accepted 40 Critical findings" is the first
+challenge any report of this kind meets, so the page answers it rather than leaving it to be
+discovered. One row for what the scanner called Critical and High, one for what NVD's CVSS
+calls them, one for the verdict this tool reached. The first two disagree routinely, because a
+scanner's own rating is not CVSS; neither is a verdict. Anything rated below High totals under
+"other" rather than being dropped, so the rows reconcile against the finding count.
+
+The first row is labelled with the tool that produced the export. `sniff_tabular_scanner()`
+recognises Snyk, Tenable Nessus, Qualys, Rapid7 InsightVM, Wiz, Prisma Cloud, Trivy and
+Dependabot by columns only that tool emits, so a Snyk export reads `Snyk` and a Qualys export
+reads `Qualys`. Every signature needs two distinctive columns, so a stray `Plugin ID` in a
+hand-made spreadsheet cannot make the report claim the data came from Nessus. The generic
+export in the screenshot above identifies no tool, so it reads `Scanner`. Nothing in the model
+branches on the name; it is a label.
+
+The same numbers are on `summary.severity_crosstab` in the JSON output, split by
+`by_scanner_severity` and `by_cvss_band`.
 
 Then a verdict donut, exposure by business unit, actionable load by owner, and a
 reachability-versus-consequence scatter with bubble size set by threat. Findings in the
@@ -369,7 +387,7 @@ That example is real output, not a mock-up. Reproduce it in one command:
 
 ```bash
 vulnometry import examples/scan-export.csv --inventory examples/vulnometry.yaml \
-  --lens full --dashboard exposure.html --title "Northwind Retail — exposure"
+  --lens full --dashboard exposure.html --title "Northwind Retail exposure"
 ```
 
 Also served at `/dashboard` when running `vulnometry serve http`.
