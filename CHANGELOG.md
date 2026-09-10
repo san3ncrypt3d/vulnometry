@@ -6,6 +6,8 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-10
+
 ### Fixed
 
 - Every feed failed with `CERTIFICATE_VERIFY_FAILED` on a corporate network. httpx verifies
