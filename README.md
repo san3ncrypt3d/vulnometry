@@ -477,6 +477,23 @@ Triage tooling that dies when one upstream is down fails at the moment you need 
 - Action errors come back as data rather than exceptions.
 - Missing evidence lowers `confidence` and is listed in `gaps` instead of being rounded away.
 
+### Behind a corporate proxy
+
+If your employer inspects TLS, verification goes through the operating system's trust store
+rather than certifi, so the proxy's private root is found the same way `curl` finds it. Nothing
+to configure. To override:
+
+```bash
+export SSL_CERT_FILE=/path/to/bundle.pem   # use a specific bundle instead
+export VULNOMETRY_SYSTEM_TRUST=0           # or go back to certifi
+```
+
+A certificate that cannot be verified fails immediately rather than after four retries, and says
+what to check. Note that Python 3.13 enables `VERIFY_X509_STRICT`, which rejects a CA certificate
+whose `basicConstraints` is not marked critical. Enterprise roots do that often enough to matter,
+and it produces `Basic Constraints of CA cert not marked critical` rather than anything about
+proxies, which is why asking the OS is the reliable answer.
+
 ## Limits
 
 Worth knowing before you rely on it:
