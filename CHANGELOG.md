@@ -6,6 +6,8 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-10
+
 ### Added
 
 - `summary.severity_crosstab`: how each severity band was judged, on both axes — what the
@@ -13,8 +15,8 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
   Critical findings" is the first challenge any report of this kind meets, so it is stated
   rather than left to be discovered. `Assessment` now carries `scanner_severity`, the
   scanner's own rating verbatim; it is kept for comparison and never used in the score.
-  Shown on the dashboard as three rankings of the same findings -- what the scanner called
-  Critical and High, what CVSS calls them, and what the model decided -- with a
+  Shown on the dashboard as three rankings of the same findings — what the scanner called
+  Critical and High, what CVSS calls them, and what the model decided — with a
   plain-language summary, since the three routinely disagree.
 
 ### Changed
@@ -47,6 +49,12 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
   `PROJECT_CRITICALITY` — the project's business-criticality tag — as the finding's
   severity. `criticality` is no longer a severity alias (asset criticality is modelled
   separately as tier) and the common explicit spellings are matched first.
+- `vulnometry --version`, the MCP `serverInfo` handshake and the OpenAPI document all
+  reported 0.1.0 on a 0.2.0 install: `__version__` is a second copy of the number in
+  `pyproject.toml`, and the 0.2.0 release bumped one and not the other. A test now fails
+  the build when the two disagree.
+- Dashboard: the Critical/High/Other headers on the rankings table were centred over
+  right-aligned counts, so no column lined up.
 
 ## [0.2.0] - 2026-09-10
 

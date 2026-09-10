@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vulnometry"
-version = "0.2.0"
+version = "0.3.0"
 description = "Vulnometry measures what a vulnerability is worth to your business, not how severe it is in the abstract. Business Exposure Index scoring, scanner intake, Excel bulk analysis, and an offline dashboard."
 readme = "README.md"
 requires-python = ">=3.10"
