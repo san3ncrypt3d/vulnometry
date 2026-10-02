@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/san3ncrypt3d/vulnometry/actions/workflows/ci.yml/badge.svg)](https://github.com/san3ncrypt3d/vulnometry/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
-[![license](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+[![license](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange)](LICENSE)
 
 Measure what a vulnerability is worth to your business, not how severe it is in the abstract.
 
@@ -527,4 +527,4 @@ Security issues: please use private vulnerability reporting rather than a public
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+PolyForm Noncommercial License 1.0.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
