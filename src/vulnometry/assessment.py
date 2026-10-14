@@ -20,10 +20,13 @@ from .schema import (
     ConfirmedExploitation,
     ExploitProbability,
     Weakness,
+    canonical_code_reachability,
     canonical_cve,
 )
 
 LENSES = ("signal", "full", "forensic")
+
+_REACH_RANK = {"unreachable": 0, "": 1, "reachable": 2}
 
 
 async def _guarded(coro, fallback, gaps: list[str], label: str):
@@ -68,10 +71,12 @@ async def assess_finding(
     lens: str = "full",
     scanner_severity: str = "",
     scanner: str = "",
+    code_reachability: str = "",
 ) -> Assessment:
     """Assess one CVE against one place you run it."""
     cve_id = canonical_cve(cve_id)
     lens = lens if lens in LENSES else "full"
+    code_reachability = canonical_code_reachability(code_reachability)
 
     if isinstance(asset, dict):
         known = set(AssetProfile.__dataclass_fields__)
@@ -108,7 +113,7 @@ async def assess_finding(
     artifacts = list(resolved.get("artifacts") or [])
     artifacts.extend(adv_feed.citations_as_artifacts(weakness.citations))
 
-    measure = measure_exposure(weakness, probability, exploitation, artifacts, asset)
+    measure = measure_exposure(weakness, probability, exploitation, artifacts, asset, code_reachability)
     fixes = _fix_versions(bulletins)
     due_by = asset.due_date(measure.verdict)
 
@@ -135,6 +140,7 @@ async def assess_finding(
         source_asset=asset_name,
         source_host=host,
         source_component=component,
+        code_reachability=code_reachability,
         directive=directive_for(measure, exploitation, fixes, asset, due_by),
         gaps=gaps,
         lens=lens,
@@ -151,7 +157,7 @@ async def assess_portfolio(
 ) -> list[Assessment]:
     """Assess many findings, returned worst-first."""
     normalised: list[dict] = []
-    seen: set[tuple] = set()
+    seen: dict[tuple, dict] = {}
     for entry in findings:
         row = {"cve": entry} if isinstance(entry, str) else dict(entry)
         cve = (row.get("cve") or row.get("cve_id") or "").strip()
@@ -162,10 +168,18 @@ async def assess_portfolio(
         except ValueError:
             continue
         key = (cve, row.get("asset", ""), row.get("host", ""), row.get("component", ""))
+        reach = canonical_code_reachability(row.get("code_reachability"))
         if key in seen:
+            # Duplicate rows can disagree. Keep the least favourable call-graph
+            # verdict: one reachable path is enough, and "not analysed" beats
+            # "unreachable" so a discount needs every row to agree.
+            kept = seen[key]
+            if _REACH_RANK[reach] > _REACH_RANK[kept["code_reachability"]]:
+                kept["code_reachability"] = reach
             continue
-        seen.add(key)
         row["cve"] = cve
+        row["code_reachability"] = reach
+        seen[key] = row
         normalised.append(row)
 
     gate = asyncio.Semaphore(max(1, concurrency))
@@ -182,6 +196,7 @@ async def assess_portfolio(
                 lens=lens,
                 scanner_severity=str(row.get("raw_severity") or "").strip(),
                 scanner=str(row.get("scanner") or "").strip(),
+                code_reachability=row["code_reachability"],
             )
 
     results = await asyncio.gather(*(one(row) for row in normalised))

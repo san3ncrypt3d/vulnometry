@@ -37,6 +37,8 @@ COLUMN_ALIASES = {
         "severitylevel", "cvssseverity", "severity", "riskfactor", "risk", "priority",
         "rating",
     ],
+    # the scanner's call-graph verdict (Snyk REACHABILITY, and similar)
+    "code_reachability": ["reachability", "codereachability", "functionreachability", "reachable"],
     "owner": ["owner", "assignee", "team", "responsible", "contact", "custodian"],
     "business_unit": ["businessunit", "bu", "department", "division", "org", "group"],
     "environment": ["environment", "env", "stage", "tier", "lifecycle"],
@@ -257,6 +259,7 @@ def parse_tabular(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
             "component": _cell(row, mapping.get("component")),
             "version": _cell(row, mapping.get("version")),
             "raw_severity": _cell(row, mapping.get("raw_severity")),
+            "code_reachability": _cell(row, mapping.get("code_reachability")),
             "scanner": scanner,
             "owner": _cell(row, mapping.get("owner")),
             "business_unit": _cell(row, mapping.get("business_unit")),

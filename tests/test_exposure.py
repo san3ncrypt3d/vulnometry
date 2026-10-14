@@ -176,3 +176,40 @@ def test_index_stays_in_range_across_extremes():
                 ConfirmedExploitation(confirmed=True), [], asset,
             )
             assert 0.0 <= measure.index <= 1000.0
+
+
+def test_no_call_path_discounts_reachability_by_about_one_band():
+    args = (wormable(), ExploitProbability(probability=0.5, resolved=True), ConfirmedExploitation(), [], CROWN_JEWEL)
+    base = measure_exposure(*args)
+    no_path = measure_exposure(*args, code_reachability="unreachable")
+
+    assert no_path.reachability < base.reachability
+    assert no_path.threat == base.threat and no_path.consequence == base.consequence
+    assert abs(no_path.index / base.index - 0.4 ** 0.7) < 0.01
+    assert any("no call path" in b for b in no_path.reachability_basis)
+
+
+def test_confirmed_call_path_is_recorded_not_scored():
+    args = (wormable(), ExploitProbability(probability=0.5, resolved=True), ConfirmedExploitation(), [], CROWN_JEWEL)
+    base = measure_exposure(*args)
+    reachable = measure_exposure(*args, code_reachability="reachable")
+
+    assert reachable.index == base.index
+    assert any("found a call path" in b for b in reachable.reachability_basis)
+
+
+def test_exploited_in_the_wild_outranks_a_static_call_graph():
+    kev = ConfirmedExploitation(confirmed=True)
+    args = (wormable(), ExploitProbability(probability=0.5, resolved=True), kev, [], CROWN_JEWEL)
+    base = measure_exposure(*args)
+    no_path = measure_exposure(*args, code_reachability="unreachable")
+
+    assert no_path.index == base.index, "KEV findings are never discounted on call-graph evidence"
+    assert any("not discounted" in b for b in no_path.reachability_basis)
+
+
+def test_model_version_default_matches_the_model():
+    from vulnometry.exposure import MODEL_VERSION
+    from vulnometry.schema import ExposureMeasure
+
+    assert ExposureMeasure().model_version == MODEL_VERSION

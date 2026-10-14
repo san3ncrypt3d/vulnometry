@@ -33,11 +33,13 @@ BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 FINDINGS_COLUMNS = [
     ("CVE", 16), ("BEI", 8), ("Verdict", 12), ("Asset", 22), ("Scanner ref", 24), ("Owner", 26),
     ("Business unit", 18), ("Environment", 13), ("Internet", 12), ("Due by", 12), ("SLA days", 9),
-    ("Threat", 9), ("Reach", 9), ("Consequence", 12),
+    ("Threat", 9), ("Reach", 9), ("Code path", 11), ("Consequence", 12),
     ("CVSS", 7), ("EPSS %", 9), ("EPSS date", 12), ("KEV", 6), ("Ransomware", 11),
     ("Component", 22), ("Fixed in", 28), ("Confidence", 11),
     ("Rationale", 90), ("Directive", 60),
 ]
+
+_CODE_PATH_SHORT = {"reachable": "Reachable", "unreachable": "No path"}
 
 _FACING_SHORT = {"internet-facing": "External", "internal-only": "Internal", "exposure unknown": "Unknown"}
 
@@ -67,7 +69,7 @@ def _primary_driver(item: Assessment) -> str:
 
 ACCEPT_COLUMNS = [
     ("CVE", 16), ("Location", 30), ("Match", 15), ("Package", 26),
-    ("BEI", 7), ("Threat", 8), ("Reach", 8), ("Conseq.", 9),
+    ("BEI", 7), ("Threat", 8), ("Reach", 8), ("Code path", 10), ("Conseq.", 9),
     ("Internet", 11), ("Tier", 6), ("Data class", 14),
     ("EPSS %", 9), ("EPSS date", 12), ("CISA KEV", 9), ("CVSS", 7),
     ("Fix available", 22), ("Confidence", 11),
@@ -108,6 +110,7 @@ def _accepted_sheet(workbook: Workbook, items: list[Assessment]) -> None:
             item.exposure.index,
             item.exposure.threat,
             item.exposure.reachability,
+            _CODE_PATH_SHORT.get(item.code_reachability, ""),
             item.exposure.consequence,
             _FACING_SHORT.get(item.exposure_facing(), ""),
             item.tier or "",
@@ -130,7 +133,7 @@ def _accepted_sheet(workbook: Workbook, items: list[Assessment]) -> None:
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=column in (18, 19, 26))
+            cell.alignment = Alignment(vertical="top", wrap_text=column in (19, 20, 27))
         sheet.cell(row=row, column=1).font = Font(bold=True)
 
     _widths(sheet, ACCEPT_COLUMNS)
@@ -169,6 +172,7 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
             item.sla_days or "",
             item.exposure.threat,
             item.exposure.reachability,
+            _CODE_PATH_SHORT.get(item.code_reachability, ""),
             item.exposure.consequence,
             severity.base_score if severity and severity.base_score is not None else "",
             round(item.probability.probability * 100, 2) if item.probability.probability is not None else "",
@@ -184,7 +188,7 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=column >= 23)
+            cell.alignment = Alignment(vertical="top", wrap_text=column >= 24)
 
         verdict_cell = sheet.cell(row=row, column=3)
         verdict_cell.fill = VERDICT_FILL.get(item.exposure.verdict, VERDICT_FILL["Accept"])

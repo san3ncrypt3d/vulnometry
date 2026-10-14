@@ -16,6 +16,29 @@ def canonical_cve(raw: str) -> str:
     return cve
 
 
+_CODE_REACHABILITY = {
+    "reachable": "reachable",
+    "yes": "reachable",
+    "true": "reachable",
+    "unreachable": "unreachable",
+    "notreachable": "unreachable",
+    "nopathfound": "unreachable",
+    "no": "unreachable",
+    "false": "unreachable",
+}
+
+
+def canonical_code_reachability(raw) -> str:
+    """A scanner's reachability cell -> "reachable", "unreachable" or "".
+
+    Only an explicit verdict counts. "Not Applicable", "Potentially reachable",
+    "no-info" and anything unrecognised mean the call graph was not decided,
+    which is not evidence either way, so they come back as "".
+    """
+    key = re.sub(r"[^a-z]", "", str(raw or "").lower())
+    return _CODE_REACHABILITY.get(key, "")
+
+
 def harvest_cve_ids(text: str) -> list[str]:
     found = re.findall(r"CVE-\d{4}-\d{4,19}", text or "", flags=re.IGNORECASE)
     ordered: dict[str, None] = {}
@@ -167,7 +190,7 @@ class ExposureMeasure(Serialisable):
 
     index: float = 0.0
     verdict: str = "Accept"
-    model_version: str = "bei-1.0"
+    model_version: str = "bei-1.1"
     threat: float = 0.0
     reachability: float = 0.0
     consequence: float = 0.0
@@ -215,6 +238,10 @@ class Assessment(Serialisable):
     source_asset: str = ""
     source_host: str = ""
     source_component: str = ""
+
+    # the scanner's own call-graph verdict for this finding: "reachable",
+    # "unreachable" or "" (not analysed). Feeds the Reachability factor.
+    code_reachability: str = ""
 
     directive: str = ""
     gaps: list[str] = field(default_factory=list)
@@ -274,6 +301,12 @@ class Assessment(Serialisable):
         else:
             ctx.append("no EPSS score")
         ctx.append("in CISA KEV" if self.exploitation.confirmed else "not in CISA KEV")
+        if self.code_reachability:
+            ctx.append(
+                "call path to the vulnerable function"
+                if self.code_reachability == "reachable"
+                else "no call path to the vulnerable function"
+            )
         parts.append("Context: " + ", ".join(ctx) + ".")
 
         if not self.fixes and e.verdict in ("Accept", "Schedule"):

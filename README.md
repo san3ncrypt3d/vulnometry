@@ -150,7 +150,7 @@ Three questions, multiplied rather than summed:
 | Factor | Question | Built from |
 |---|---|---|
 | Threat | Will anyone actually try? | CISA KEV (observed exploitation), FIRST EPSS (predicted), exploit maturity |
-| Reachability | Can they get to it *here*? | CVSS attack vector, complexity, privileges, UI, times your topology |
+| Reachability | Can they get to it *here*? | CVSS attack vector, complexity, privileges, UI, times your topology, and the scanner's call-graph verdict when the export has one |
 | Consequence | What does it cost us? | CVSS impact sub-metrics, times asset tier, data class, regulatory scope |
 
 Multiplication is the design decision. A weighted sum lets a frightening CVSS carry a finding

@@ -96,11 +96,29 @@ physical 0.05), then applies multipliers:
 | Internet exposure unknown | ×0.7 |
 | Deployment unconfirmed | ×0.9 |
 | Compensating controls present | ×0.45 |
+| Scanner found no call path to the vulnerable function | ×0.4 (not applied if in CISA KEV) |
 | **Component not deployed** | **→ 0, immediately** |
 
 Compensating controls are deliberately a large discount but not a zero. A WAF
 virtual patch genuinely reduces reachability; treating it as a fix is how people
 get breached through the one request the rule did not match.
+
+**Scanner call-graph evidence.** Some scanners (Snyk's `REACHABILITY` column, and
+similar) analyse whether your code actually calls the vulnerable function. When an
+export carries that column it is read per finding, with no flag needed:
+
+- `No Path Found` / `Unreachable` → ×0.4. After the exponent that roughly halves
+  the index, about one verdict band. A discount, not a zero: reflection, dynamic
+  dispatch and deserialisation hide call paths from static analysis.
+- `Reachable` → recorded in the basis, no change. Network reachability already
+  assumes the worst; a confirmed call path removes doubt rather than adding threat.
+- `Not Applicable`, `Potentially reachable`, blank or anything else → no change.
+  An undecided analysis is not evidence either way.
+- A CVE in CISA KEV is never discounted on call-graph evidence. Observed
+  exploitation is stronger evidence than a static call graph, so the result is
+  recorded but not applied.
+- When duplicate rows for the same finding disagree, the least favourable verdict
+  wins. One reachable path is enough, and the discount needs every row to agree.
 
 ## Consequence: what does it cost us?
 
@@ -263,10 +281,11 @@ changed or because we did.
 
 ## What this model does not do
 
-- It does not verify that the vulnerable code path is reachable in your
-  deployment. That is function-level reachability analysis, and commercial tools
-  do it by reading your call graph. Vulnometry reasons about network and deployment
-  reachability from your inventory, which is coarser.
+- It does not work out for itself whether the vulnerable code path is reachable in
+  your deployment. That is function-level reachability analysis, and commercial
+  tools do it by reading your call graph. Vulnometry uses that result when the
+  scanner export carries it (see Reachability above); otherwise it reasons about
+  network and deployment reachability from your inventory, which is coarser.
 - It does not know about your patch history, change freeze windows, or which
   team is on holiday.
 - The weights are not derived from breach data. Nobody's are, publicly. They are

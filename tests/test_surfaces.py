@@ -4,6 +4,7 @@ import asyncio
 import json
 
 from vulnometry.analyst import run_analysis
+from vulnometry.exposure import MODEL_VERSION
 from vulnometry.providers import parse_spec
 from vulnometry.providers.base import ChatResponse, Message, ProviderError, ToolCall, parse_arguments
 from vulnometry.registry import ACTIONS, invoke
@@ -230,7 +231,7 @@ def test_accepted_sheet_carries_rationale_and_signoff_columns(tmp_path):
     assert row["CVE"] == "CVE-2024-9999"
     assert row["Internet"] == "Internal"
     assert row["EPSS date"] == "2026-09-08"
-    assert row["Model"] == "bei-1.0"
+    assert row["Model"] == MODEL_VERSION
     assert "little sign anyone will try" in row["Rationale"]
     assert "EPSS 0.40% (as of 2026-09-08)" in row["Rationale"]
     assert row["Decision"] == "Accept risk / suppress in scanner"

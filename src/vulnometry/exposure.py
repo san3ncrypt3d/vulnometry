@@ -11,7 +11,7 @@ from .schema import (
     Weakness,
 )
 
-MODEL_VERSION = "bei-1.0"
+MODEL_VERSION = "bei-1.1"
 
 THREAT_EXPONENT = 0.8
 REACH_EXPONENT = 0.7
@@ -29,6 +29,13 @@ VERDICT_MEANING = {
 VECTOR_REACH = {"N": 1.0, "A": 0.45, "L": 0.2, "P": 0.05}
 
 MATURITY_THREAT = {"weaponised": 0.78, "proof-of-concept": 0.55, "referenced": 0.35}
+
+# A scanner's call-graph analysis found no path from this code to the vulnerable
+# function. Strong evidence, not proof: reflection, dynamic dispatch and
+# deserialisation hide call paths from static analysis, so it discounts rather
+# than zeroes. 0.4 is the same weight as "not internet-reachable", and after the
+# 0.7 exponent it roughly halves the index: about one verdict band.
+CODE_UNREACHABLE_REACH = 0.4
 
 
 def _first_letter(value: str) -> str:
@@ -88,7 +95,10 @@ def compute_threat(
 
 
 def compute_reachability(
-    weakness: Weakness, asset: AssetProfile
+    weakness: Weakness,
+    asset: AssetProfile,
+    code_reachability: str = "",
+    exploited: bool = False,
 ) -> tuple[float, list[str], str]:
     basis: list[str] = []
     severity = weakness.primary_severity()
@@ -135,6 +145,20 @@ def compute_reachability(
     if asset.has_controls:
         reach *= 0.45
         basis.append(f"Compensating controls in place: {', '.join(asset.compensating_controls[:3])}")
+
+    if code_reachability == "reachable":
+        basis.append("Scanner's reachability analysis found a call path to the vulnerable function")
+    elif code_reachability == "unreachable":
+        if exploited:
+            # Exploited in the wild is observed fact; a static call graph that
+            # says otherwise is the weaker evidence. Recorded, not applied.
+            basis.append(
+                "Scanner found no call path to the vulnerable function, "
+                "not discounted because it is exploited in the wild"
+            )
+        else:
+            reach *= CODE_UNREACHABLE_REACH
+            basis.append("Scanner's reachability analysis found no call path to the vulnerable function")
 
     collapsed = "reachability" if reach < 0.05 else ""
     return _clamp(reach), basis, collapsed
@@ -202,12 +226,15 @@ def measure_exposure(
     exploitation: ConfirmedExploitation,
     artifacts: list[ExploitArtifact] | None = None,
     asset: AssetProfile | None = None,
+    code_reachability: str = "",
 ) -> ExposureMeasure:
     artifacts = artifacts or []
     asset = asset or UNKNOWN_ASSET
 
     threat, threat_basis = compute_threat(probability, exploitation, artifacts)
-    reach, reach_basis, collapsed = compute_reachability(weakness, asset)
+    reach, reach_basis, collapsed = compute_reachability(
+        weakness, asset, code_reachability, exploited=exploitation.confirmed
+    )
     consequence, consequence_basis = compute_consequence(weakness, asset)
 
     index = 1000.0 * (

@@ -386,3 +386,37 @@ def test_a_certificate_failure_fails_fast_with_an_explanation(monkeypatch):
         asyncio.run(run_flaky())
     assert Flaky.attempts > 1, "ordinary transport errors are still retried"
     reset_settings()
+
+
+def test_scanner_call_graph_feeds_the_score():
+    async def run():
+        await prime_all()
+        return await assess_portfolio([
+            {"cve": "CVE-2023-40000", "asset": "checkout-api", "component": "a"},
+            {"cve": "CVE-2023-40000", "asset": "checkout-api", "component": "b",
+             "code_reachability": "No Path Found"},
+            # exploited in the wild: recorded, never discounted
+            {"cve": "CVE-2021-44228", "asset": "checkout-api", "component": "a"},
+            {"cve": "CVE-2021-44228", "asset": "checkout-api", "component": "b",
+             "code_reachability": "No Path Found"},
+        ], inventory=INVENTORY, lens="signal")
+
+    by = {(r.cve_id, r.source_component): r for r in asyncio.run(run())}
+    plain, no_path = by[("CVE-2023-40000", "a")], by[("CVE-2023-40000", "b")]
+    assert no_path.code_reachability == "unreachable"
+    assert no_path.exposure.index < plain.exposure.index
+    assert "no call path to the vulnerable function" in no_path.rationale()
+
+    kev_plain, kev_no_path = by[("CVE-2021-44228", "a")], by[("CVE-2021-44228", "b")]
+    assert kev_no_path.exposure.index == kev_plain.exposure.index
+
+
+def test_duplicate_rows_keep_the_least_favourable_call_graph_verdict():
+    async def run(*cells):
+        await prime_all()
+        rows = [{"cve": "CVE-2023-40000", "asset": "checkout-api", "code_reachability": c} for c in cells]
+        return await assess_portfolio(rows, inventory=INVENTORY, lens="signal")
+
+    assert asyncio.run(run("No Path Found", "Reachable"))[0].code_reachability == "reachable"
+    assert asyncio.run(run("No Path Found", "Not Applicable"))[0].code_reachability == ""
+    assert asyncio.run(run("No Path Found", "No Path Found"))[0].code_reachability == "unreachable"

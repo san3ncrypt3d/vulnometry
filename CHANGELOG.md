@@ -6,6 +6,25 @@ that any change to the exposure model bumps `MODEL_VERSION` independently.
 
 ## [Unreleased]
 
+Exposure model `bei-1.1`.
+
+### Added
+
+- Reachability now uses the scanner's own call-graph analysis when the export carries
+  it, such as Snyk's `REACHABILITY` column. It is detected automatically, with no flag. "No path found" discounts
+  the Reachability factor ×0.4, roughly one verdict band, unless the CVE is in CISA KEV,
+  where observed exploitation outweighs a static call graph and the result is recorded
+  but not applied. "Reachable" is recorded and changes nothing; "Not Applicable" and
+  anything undecided are ignored. When duplicate rows disagree, the least favourable
+  verdict wins. `Assessment.code_reachability` carries the normalised value; the
+  workbook's Findings and Accepted sheets gain a **Code path** column, the CSV a
+  `code_reachability` column, and the rationale mentions it.
+
+### Changed
+
+- `MODEL_VERSION` is `bei-1.1`. Findings without call-graph data score exactly as
+  under `bei-1.0`.
+
 ## [0.3.1] - 2026-09-10
 
 ### Fixed

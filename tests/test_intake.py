@@ -243,3 +243,28 @@ def test_dashboard_escapes_everything_that_came_from_data(tmp_path):
 
     assert "<script>alert" not in html, "data reached the page unescaped"
     assert "&lt;script&gt;" in html, "the hostile string should still be visible, escaped"
+
+
+def test_scanner_reachability_column_is_read(tmp_path):
+    path = tmp_path / "snyk.csv"
+    path.write_text(
+        "PROJECT_NAME,CVE,ISSUE_SEVERITY,REACHABILITY\n"
+        "checkout-api,CVE-2021-44228,Critical,No Path Found\n"
+        "checkout-api,CVE-2023-40000,Low,Reachable\n"
+        "checkout-api,CVE-2024-50000,Low,Not Applicable\n"
+    )
+    findings, _ = parse_tabular(path)
+    assert {f["cve"]: f["code_reachability"] for f in findings} == {
+        "CVE-2021-44228": "No Path Found",
+        "CVE-2023-40000": "Reachable",
+        "CVE-2024-50000": "Not Applicable",
+    }
+
+
+def test_only_an_explicit_call_graph_verdict_counts():
+    from vulnometry.schema import canonical_code_reachability as c
+
+    assert c("Reachable") == "reachable"
+    assert c("No Path Found") == c("not-reachable") == c("UNREACHABLE") == "unreachable"
+    for undecided in ("Not Applicable", "Potentially reachable", "no-info", "", None):
+        assert c(undecided) == "", undecided
