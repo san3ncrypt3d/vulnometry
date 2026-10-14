@@ -40,6 +40,9 @@ COLUMN_ALIASES = {
     "owner": ["owner", "assignee", "team", "responsible", "contact", "custodian"],
     "business_unit": ["businessunit", "bu", "department", "division", "org", "group"],
     "environment": ["environment", "env", "stage", "tier", "lifecycle"],
+    # Only used to describe rows that carry no CVE, so they can be listed rather than dropped.
+    "title": ["problemtitle", "title", "issuetitle", "vulnerabilitytitle", "vulnerabilityname",
+              "pluginname", "summary"],
 }
 
 _MAX_SCAN_ROWS = 25
@@ -218,7 +221,10 @@ def preview_columns(path: str | Path, sheet: str = "") -> dict:
     }
 
 
-def parse_tabular(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
+def parse_tabular(path: str | Path, sheet: str = "", unscored: list | None = None) -> tuple[list[dict], str]:
+    """Findings, one per (row, CVE). Rows with no CVE identifier cannot be scored;
+    pass a list as ``unscored`` to have them appended to it instead of dropped, so a
+    report can still account for every row the scanner exported."""
     path = Path(path)
     if path.suffix.lower() in (".csv", ".tsv"):
         rows, sheet_name = _rows_from_csv(path), ""
@@ -248,9 +254,6 @@ def parse_tabular(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
         else:
             cve_ids = harvest_cve_ids(" ".join(str(c) for c in row if c is not None))
 
-        if not cve_ids:
-            continue
-
         base = {
             "asset": _cell(row, mapping.get("asset")),
             "host": _cell(row, mapping.get("host")),
@@ -263,6 +266,11 @@ def parse_tabular(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
             "environment": _cell(row, mapping.get("environment")),
             "source": path.name,
         }
+        if not cve_ids:
+            if unscored is not None:
+                unscored.append({**base, "title": _cell(row, mapping.get("title")),
+                                 "reason": "no CVE identifier"})
+            continue
         for cve in cve_ids:
             findings.append({**base, "cve": cve})
 

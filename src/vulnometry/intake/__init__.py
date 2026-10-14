@@ -26,8 +26,11 @@ MANIFEST_NAMES = {
 }
 
 
-def load_findings(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
-    """Read any supported file. Returns (findings, description_of_format)."""
+def load_findings(path: str | Path, sheet: str = "", unscored: list | None = None) -> tuple[list[dict], str]:
+    """Read any supported file. Returns (findings, description_of_format).
+
+    For spreadsheets and CSV, rows with no CVE identifier are appended to
+    ``unscored`` when a list is passed (see ``parse_tabular``)."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"{path} does not exist")
@@ -35,7 +38,7 @@ def load_findings(path: str | Path, sheet: str = "") -> tuple[list[dict], str]:
     suffix = path.suffix.lower()
 
     if suffix in TABULAR_SUFFIXES:
-        return parse_tabular(path, sheet=sheet)
+        return parse_tabular(path, sheet=sheet, unscored=unscored)
 
     if path.name in MANIFEST_NAMES or path.name.startswith("requirements"):
         components, label = parse_manifest(path)

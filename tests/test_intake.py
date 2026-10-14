@@ -57,6 +57,22 @@ def test_multi_cve_cells_become_separate_findings(tmp_path):
     assert "Excel" in label
 
 
+def test_rows_without_a_cve_are_listed_not_dropped_when_asked(tmp_path):
+    path = _messy_workbook(tmp_path / "export.xlsx")
+    unscored = []
+    findings, _ = load_findings(path, unscored=unscored)
+
+    assert len(findings) == 3, "the scored findings are unchanged"
+    assert len(unscored) == 1
+    row = unscored[0]
+    assert row["raw_severity"] == "Info", "the scanner's own rating is kept"
+    assert row["asset"] == "checkout-api" and row["host"] == "checkout-01"
+    assert row["reason"] == "no CVE identifier"
+
+    findings_again, _ = parse_tabular(path)
+    assert len(findings_again) == 3, "callers that pass nothing see the old behaviour"
+
+
 def test_csv_with_semicolons_and_no_cve_column(tmp_path):
     path = tmp_path / "report.csv"
     path.write_text("host;finding;risk\nweb-01;Detected CVE-2021-44228 in log4j;High\nweb-02;Clean;Info\n")

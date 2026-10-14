@@ -238,6 +238,49 @@ def test_accepted_sheet_carries_rationale_and_signoff_columns(tmp_path):
     assert "CISA KEV" in row["Reopen triggers"]
 
 
+def test_scanner_severity_is_carried_into_every_output(tmp_path):
+    from openpyxl import load_workbook
+
+    items = _sample()
+    items[0].scanner_severity = "CRITICAL"
+    items[1].scanner_severity = "moderate"
+    items[1].asset = ""
+    sheet = load_workbook(build_workbook(items, tmp_path / "out.xlsx", None))["Findings"]
+    header = [c.value for c in sheet[4]]
+    rows = [{header[i]: sheet.cell(row=r, column=i + 1).value for i in range(len(header))} for r in (5, 6)]
+    assert [r["Scanner severity"] for r in rows] == ["Critical", "Medium"]
+    assert [r["Match"] for r in rows] == ["inventory", "scanner-ref only"]
+    assert header.index("Rationale") == len(header) - 2, "free-text columns stay last"
+
+    csv_lines = to_csv(items).splitlines()
+    assert csv_lines[0].startswith("cve,bei,verdict,scanner_severity,")
+    assert csv_lines[1].startswith("CVE-2021-44228,928.9,Contain,CRITICAL,")
+
+
+def test_rows_the_model_could_not_score_get_their_own_sheet(tmp_path):
+    from openpyxl import load_workbook
+
+    from vulnometry.assessment import not_scored_summary
+
+    not_scored = not_scored_summary([
+        {"raw_severity": "Low", "asset": "web", "title": "MIT licence", "reason": "no CVE identifier"},
+        {"raw_severity": "HIGH", "asset": "api", "title": "Prototype pollution", "reason": "no CVE identifier"},
+    ])
+    assert not_scored["count"] == 2
+    assert list(not_scored["by_scanner_severity"]) == ["High", "Low"], "ordered by severity"
+
+    summary = {"assessed": 2, "actionable": 1, "suppressed_by_context": 1, "unattributed": 0,
+               "not_scored": not_scored}
+    workbook = load_workbook(build_workbook(_sample(), tmp_path / "out.xlsx", summary))
+    assert "Not scored" in workbook.sheetnames
+    sheet = workbook["Not scored"]
+    assert [c.value for c in sheet[5]][:2] == ["High", "api"], "worst first"
+    assert sheet.cell(row=6, column=5).value == "MIT licence"
+    method = " ".join(str(c.value) for row in workbook["Method"].iter_rows() for c in row if c.value)
+    assert "2 row(s) not scored" in method
+    assert json.loads(to_json(_sample(), summary))["summary"]["not_scored"]["count"] == 2
+
+
 def test_rationale_leads_with_the_driving_factor():
     urgent = Assessment(
         cve_id="CVE-1", internet_exposed=True, tier=1,
