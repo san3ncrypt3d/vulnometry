@@ -1,4 +1,4 @@
-"""Annotated Excel output: Findings, Action Plan, By Owner, Method."""
+"""Annotated Excel output: Findings, Action Plan, Accepted, Not scored, By Owner, Method."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from ..assessment import scanner_band
 from ..schema import Assessment
 
 VERDICT_FILL = {
@@ -31,7 +32,8 @@ THIN = Side(style="thin", color="D5D8DC")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 FINDINGS_COLUMNS = [
-    ("CVE", 16), ("BEI", 8), ("Verdict", 12), ("Asset", 22), ("Scanner ref", 24), ("Owner", 26),
+    ("CVE", 16), ("BEI", 8), ("Verdict", 12), ("Scanner severity", 11), ("Asset", 22),
+    ("Scanner ref", 24), ("Match", 15), ("Owner", 26),
     ("Business unit", 18), ("Environment", 13), ("Internet", 12), ("Due by", 12), ("SLA days", 9),
     ("Threat", 9), ("Reach", 9), ("Consequence", 12),
     ("CVSS", 7), ("EPSS %", 9), ("EPSS date", 12), ("KEV", 6), ("Ransomware", 11),
@@ -66,7 +68,7 @@ def _primary_driver(item: Assessment) -> str:
 
 
 ACCEPT_COLUMNS = [
-    ("CVE", 16), ("Location", 30), ("Match", 15), ("Package", 26),
+    ("CVE", 16), ("Location", 30), ("Match", 15), ("Package", 26), ("Scanner severity", 11),
     ("BEI", 7), ("Threat", 8), ("Reach", 8), ("Conseq.", 9),
     ("Internet", 11), ("Tier", 6), ("Data class", 14),
     ("EPSS %", 9), ("EPSS date", 12), ("CISA KEV", 9), ("CVSS", 7),
@@ -105,6 +107,7 @@ def _accepted_sheet(workbook: Workbook, items: list[Assessment]) -> None:
             item.where() or "",
             "inventory" if item.asset else "scanner-ref only",
             item.source_component or "",
+            scanner_band(item.scanner_severity),
             item.exposure.index,
             item.exposure.threat,
             item.exposure.reachability,
@@ -130,7 +133,7 @@ def _accepted_sheet(workbook: Workbook, items: list[Assessment]) -> None:
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=column in (18, 19, 26))
+            cell.alignment = Alignment(vertical="top", wrap_text=column in (19, 20, 27))
         sheet.cell(row=row, column=1).font = Font(bold=True)
 
     _widths(sheet, ACCEPT_COLUMNS)
@@ -159,8 +162,10 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
             item.cve_id,
             item.exposure.index,
             item.exposure.verdict,
+            scanner_band(item.scanner_severity),
             item.asset or "",
             item.scanner_ref(),
+            "inventory" if item.asset else "scanner-ref only",
             item.owner or "",
             item.business_unit or "",
             item.environment or "",
@@ -184,7 +189,7 @@ def _findings_sheet(workbook: Workbook, items: list[Assessment]) -> None:
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=column >= 23)
+            cell.alignment = Alignment(vertical="top", wrap_text=column >= 25)
 
         verdict_cell = sheet.cell(row=row, column=3)
         verdict_cell.fill = VERDICT_FILL.get(item.exposure.verdict, VERDICT_FILL["Accept"])
@@ -206,7 +211,8 @@ def _action_sheet(workbook: Workbook, items: list[Assessment]) -> None:
     sheet.cell(row=2, column=1, value=f"{len(actionable)} of {len(items)} findings need action. Sorted by due date.")
     sheet.cell(row=2, column=1).font = Font(color="7F8C8D", size=10)
 
-    columns = [("Due by", 12), ("CVE", 16), ("Verdict", 12), ("Asset", 24), ("Owner", 28), ("Action", 70)]
+    columns = [("Due by", 12), ("CVE", 16), ("Verdict", 12), ("Scanner severity", 11), ("Asset", 24),
+               ("Owner", 28), ("Action", 70)]
     header_row = 4
     for index, (name, _) in enumerate(columns, start=1):
         sheet.cell(row=header_row, column=index, value=name)
@@ -217,18 +223,57 @@ def _action_sheet(workbook: Workbook, items: list[Assessment]) -> None:
         row = header_row + 1 + offset
         for column, value in enumerate(
             [item.due_by or "unscheduled", item.cve_id, item.exposure.verdict,
+             scanner_band(item.scanner_severity),
              item.where() or "unattributed", item.owner or "unassigned", item.directive],
             start=1,
         ):
             cell = sheet.cell(row=row, column=column, value=value)
             cell.border = BORDER
-            cell.alignment = Alignment(vertical="top", wrap_text=column == 6)
+            cell.alignment = Alignment(vertical="top", wrap_text=column == 7)
         cell = sheet.cell(row=row, column=3)
         cell.fill = VERDICT_FILL.get(item.exposure.verdict, VERDICT_FILL["Accept"])
         cell.font = VERDICT_FONT.get(item.exposure.verdict, VERDICT_FONT["Accept"])
 
     _widths(sheet, columns)
     sheet.freeze_panes = sheet.cell(row=header_row + 1, column=1)
+
+
+NOT_SCORED_COLUMNS = [
+    ("Scanner severity", 11), ("Asset", 30), ("Host", 26), ("Component", 22), ("Title", 50), ("Why not scored", 24),
+]
+
+
+def _not_scored_sheet(workbook: Workbook, not_scored: dict) -> None:
+    rows = not_scored.get("rows") or []
+    sheet = workbook.create_sheet("Not scored")
+    sheet.cell(row=1, column=1, value="Rows the model could not score").font = TITLE_FONT
+    by_severity = ", ".join(f"{k} {v}" for k, v in (not_scored.get("by_scanner_severity") or {}).items())
+    sheet.cell(
+        row=2, column=1,
+        value=(f"{len(rows)} row(s) in the export carry no CVE identifier ({by_severity}). Exposure is scored "
+               "per CVE, so these keep only the scanner's own severity. Triage them on that."),
+    ).font = Font(color="7F8C8D", size=10)
+
+    header_row = 4
+    for index, (name, _) in enumerate(NOT_SCORED_COLUMNS, start=1):
+        sheet.cell(row=header_row, column=index, value=name)
+    _style_header(sheet, header_row, len(NOT_SCORED_COLUMNS))
+
+    order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    ordered = sorted(rows, key=lambda r: (order.get(r.get("scanner_severity"), 4), r.get("asset", "")))
+    for offset, item in enumerate(ordered):
+        row = header_row + 1 + offset
+        values = [item.get("scanner_severity", ""), item.get("asset", ""), item.get("host", ""),
+                  item.get("component", ""), item.get("title", ""), item.get("reason", "")]
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row, column=column, value=value)
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=column == 5)
+
+    _widths(sheet, NOT_SCORED_COLUMNS)
+    sheet.freeze_panes = sheet.cell(row=header_row + 1, column=1)
+    if rows:
+        sheet.auto_filter.ref = f"A{header_row}:{get_column_letter(len(NOT_SCORED_COLUMNS))}{header_row + len(rows)}"
 
 
 def _owner_sheet(workbook: Workbook, items: list[Assessment]) -> None:
@@ -309,7 +354,9 @@ def _method_sheet(workbook: Workbook, items: list[Assessment], summary: dict | N
         rows += [
             ("This assessment", f"{summary['assessed']} findings · {summary['actionable']} actionable · "
                                 f"{summary['suppressed_by_context']} suppressed by business context · "
-                                f"{summary['unattributed']} not matched to a known asset"),
+                                f"{summary['unattributed']} not matched to a known asset"
+                                + (f" · {summary['not_scored']['count']} row(s) not scored (no CVE identifier; "
+                                   "see 'Not scored')" if summary.get("not_scored") else "")),
         ]
         reduction = summary.get("reduction") or {}
         if reduction.get("findings_assessed"):
@@ -356,6 +403,8 @@ def build_workbook(items: list[Assessment], path: str | Path, summary: dict | No
     _findings_sheet(workbook, items)
     _action_sheet(workbook, items)
     _accepted_sheet(workbook, items)
+    if summary and summary.get("not_scored"):
+        _not_scored_sheet(workbook, summary["not_scored"])
     _owner_sheet(workbook, items)
     _method_sheet(workbook, items, summary)
     path.parent.mkdir(parents=True, exist_ok=True)

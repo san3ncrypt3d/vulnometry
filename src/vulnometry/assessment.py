@@ -364,6 +364,27 @@ def reduction_funnel(assessments: list[Assessment],
     }
 
 
+def not_scored_summary(rows: list[dict]) -> dict:
+    """Rows the scanner exported that carry no CVE, so the model could not score them.
+
+    Listed rather than dropped, with the scanner's own severity, so a report still
+    accounts for every row the reader can see in the scanner.
+    """
+    by_severity: Counter = Counter(scanner_band(r.get("raw_severity", "")) or "unrated" for r in rows)
+    keys = [b for b in SEVERITY_BANDS if b in by_severity]
+    keys += sorted(k for k in by_severity if k not in SEVERITY_BANDS)
+    return {
+        "count": len(rows),
+        "by_scanner_severity": {k: by_severity[k] for k in keys},
+        "rows": [
+            {"scanner_severity": scanner_band(r.get("raw_severity", "")), "asset": r.get("asset", ""),
+             "host": r.get("host", ""), "component": r.get("component", ""),
+             "title": r.get("title", ""), "reason": r.get("reason", "no CVE identifier")}
+            for r in rows
+        ],
+    }
+
+
 def portfolio_summary(assessments: list[Assessment],
                       triage_minutes: tuple[float, float] | None = None) -> dict:
     """Summary paragraph for the top of a report."""

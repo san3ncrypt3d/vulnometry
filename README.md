@@ -256,12 +256,20 @@ Reads `.xlsx`, `.xls`, `.csv` and `.tsv`, plus native JSON from Trivy, Grype, Sn
 Dependabot and SARIF. `vulnometry sweep` handles lockfiles and SBOMs: requirements.txt,
 poetry.lock, package-lock.json, go.mod, Gemfile.lock, Cargo.lock, pom.xml, CycloneDX and SPDX.
 
-The workbook it writes has five sheets: Findings (every row, colour-coded, filterable, frozen
+The workbook it writes has these sheets: Findings (every row, colour-coded, filterable, frozen
 header, with a plain-language Rationale column), Action Plan (only what needs doing, sorted by
 due date), Accepted (everything below the action threshold, with the rationale, the EPSS score
 and its date, internet exposure, evidence gaps, model version and timestamp, plus blank
-columns for who accepted it, the review-by date and what should reopen it), By Owner (workload
-per team), and Method (how the numbers were produced).
+columns for who accepted it, the review-by date and what should reopen it), Not scored (only
+when the export has rows with no CVE identifier), By Owner (workload per team), and Method
+(how the numbers were produced).
+
+The scanner's own severity is carried through: a Scanner severity column on Findings, Action
+Plan and Accepted, and a `scanner_severity` column in `--format csv`. That puts the rating the
+reader has already seen in Snyk or Nessus next to the verdict. Rows with no CVE identifier, such
+as licence issues and scanner-only advisories, can't be scored. They are not dropped silently:
+the Not scored sheet and `summary.not_scored` in JSON list each one with its scanner severity,
+so the report still accounts for every row in the export.
 
 When a finding matches no asset in your inventory it is still scored (pessimistically) and
 still actionable: every report keeps the name the scanner gave it — a Scanner ref column in the

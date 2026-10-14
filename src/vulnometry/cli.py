@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .assessment import assess_portfolio, portfolio_summary
+from .assessment import assess_portfolio, not_scored_summary, portfolio_summary
 from .config import settings
 from .inventory import TEMPLATE, AssetProfile, Inventory
 from .report import (
@@ -191,8 +191,9 @@ async def cmd_import(args) -> int:
             ERR.print("[yellow]No CVE column detected. Vulnometry will scan whole rows for identifiers instead.[/]")
         return 0
 
+    unscored: list[dict] = []
     try:
-        rows, label = load_findings(path, sheet=args.sheet)
+        rows, label = load_findings(path, sheet=args.sheet, unscored=unscored)
     except (ValueError, FileNotFoundError) as exc:
         ERR.print(f"[red]{exc}[/]")
         return 2
@@ -207,6 +208,9 @@ async def cmd_import(args) -> int:
         return 2
 
     ERR.print(f"Read [bold]{len(rows)}[/] finding(s) from {path.name}: {label}")
+    if unscored:
+        ERR.print(f"[yellow]{len(unscored)} row(s) carry no CVE identifier[/] and cannot be scored. "
+                  "They are listed, with the scanner's severity, as 'Not scored'.")
 
     inventory = _load_inventory(args)
     if inventory.assets:
@@ -223,6 +227,8 @@ async def cmd_import(args) -> int:
         )
 
     summary = portfolio_summary(results)
+    if unscored:
+        summary["not_scored"] = not_scored_summary(unscored)
     if args.min_index:
         results = [r for r in results if r.exposure.index >= args.min_index]
 
